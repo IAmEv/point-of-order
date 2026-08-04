@@ -1,0 +1,1805 @@
+Conversation Title: Designing a web MUN Chair simulation game
+Agent: ONEchat
+
+[07/11/2026 17:21:01 +00:00] Seifer, Evan:
+I want to make a game that can be hosted on a website and simulates being a Model United Nations committee Chair for collegiate MUN conferences. I want the game to feel intuitive and fun to play while emphasizing the skills and knowledge required to be a good Chair. How should I go about making this game and how can I make the gameplay loop fun with intuitive/immersive controls
+
+Response:
+# Building a Model UN Chair Simulator: Design & Development Guide
+
+This is a genuinely interesting niche — there's real appetite for it in the collegiate MUN circuit (especially among people prepping to chair at conferences like HNMUN, NCSC, UNCMUNC, etc.), and almost nothing exists in the space. Let me break this down into the two questions you're really asking: **what should the game *be*** (design), and **how do you actually build it** (execution).
+
+---
+
+## Part 1: Distilling What Makes a Good Chair
+
+Before touching code or mechanics, you need to be ruthless about what skills you're actually simulating. A good collegiate Chair does roughly these things, and each one is a potential game system:
+
+| Chair Skill | Game System It Becomes |
+|---|---|
+| **Procedural fluency** (Robert's Rules / parliamentary procedure) | Quick-decision prompts, motion routing puzzles |
+| **Time management** (keeping committee on pace toward a resolution) | A visible session clock + "committee progress" meter |
+| **Reading the room** (recognizing bloc dynamics, dominant/quiet delegates) | Delegate mood/engagement stats you infer from behavior |
+| **Fairness & speaker equity** (rotating the speakers list, avoiding favoritism) | Tracked stats on who's spoken, with penalties for imbalance |
+| **Crisis handling** (surprise notes, disruptive delegates, walkouts) | Timed event cards / interrupts |
+| **Substantive knowledge** (understanding the topic well enough to guide debate) | Optional "ruling on relevance" mini-decisions |
+| **Voice & presence** (calm authority under pressure) | Tone choices in dialogue — firm vs. diplomatic vs. warm |
+
+If you build systems around *all* of these, you have a real simulator. If you build around only 1-2, you have a minigame.
+
+---
+
+## Part 2: The Core Gameplay Loop
+
+I'd structure this as a **committee session = a level**. Here's the loop I'd recommend:
+
+**Session Setup (30 sec)** → briefing on topic, committee size, difficulty, any special conditions ("this committee has three dominant blocs," "the USSR delegate is a known filibusterer," etc.)
+
+**Live Session (8–15 min real time, representing a full committee session)** → the main gameplay. Motions fly in, speakers finish, notes arrive, crises trigger.
+
+**Debrief (30 sec)** → scored on 4-5 axes: Procedural Accuracy, Speaker Equity, Committee Progress, Delegate Satisfaction, Crisis Response. Unlock next session.
+
+**Meta-progression** → chairing progressively harder committees (GA Plenary → specialized ECOSOC → Security Council → Crisis committees), each unlocking new mechanics (unmoderated caucuses, crisis notes, veto powers, etc.).
+
+The key is that the **live session** must feel like *controlled chaos you're actively mastering*, not a menu you're clicking through.
+
+---
+
+## Part 3: Making the Controls Intuitive & Immersive
+
+This is where most simulators fail — they either drown you in menus or oversimplify to the point of tedium. Some specific recommendations:
+
+**1. The gavel is your primary verb.** Clicking/tapping the gavel should be the "commit" action for any decision — ruling on a motion, recognizing a speaker, calling to order. Make it satisfying: sound, screen shake, a subtle particle. This becomes muscle memory.
+
+**2. Motions come in as physical "cards" sliding onto your dais.** Each card shows: delegate name, motion type, parameters (duration, speaking time, topic). You drag them into slots:
+   - **Approve** slot (goes to vote / auto-passes if procedural)
+   - **Rule out of order** slot (with a reason — wrong precedence, not in order)
+   - **Table** slot
+   
+   This is spatial and tactile, not a dropdown menu. Think *Papers, Please* meets *Reigns*.
+
+**3. The speakers list is a visible queue on the side** — portraits of delegates lined up. You tap to recognize next. Delegates whose "engagement" is dropping visually fidget or lower their placards. This teaches you to *see* the room.
+
+**4. Delegate placards are the ambient information layer.** Raised placard = wants to speak. Color-coded by bloc. A placard raised urgently (shaking) = point of order or personal privilege — you must address immediately or take a penalty.
+
+**5. Time pressure via a "flow" meter, not just a clock.** When you're making good calls quickly, the committee has "momentum." Hesitation, wrong rulings, or ignoring the room drains it. Low flow = delegates start talking over each other, sending frivolous motions, disengaging. This is the pressure system that makes it *feel* like chairing.
+
+**6. Crisis notes slide in from the side as folded papers.** You tap to open, read, and choose a response (2-4 options). Timed. This mirrors the real experience of a page handing you a note mid-session.
+
+**7. Voice/tone system via a simple three-way toggle** before responses: 🗣️ Firm / 🤝 Diplomatic / 😊 Warm. Different delegates and situations respond to different tones. Overusing "Firm" tanks delegate satisfaction; overusing "Warm" tanks your authority meter.
+
+---
+
+## Part 4: What Makes It *Fun* (Not Just Educational)
+
+Educational games die when they feel like homework. Some design principles to avoid that:
+
+- **Failure should be funny, not punishing.** A committee spiraling out of control — delegates arguing, someone motioning to adjourn every 30 seconds, a bloc walking out — should be entertaining to watch even as you lose. Think *Overcooked* kitchen disasters.
+- **Escalating absurdity in later levels.** Chair a committee where one delegate is *clearly* representing a rogue crisis arc. Chair a joint-crisis with two rooms. Chair MUNI (Model UN of the Impossible) where the topic is "Resolved: Time Travel."
+- **Named delegates with personalities that recur.** The player learns "oh no, it's Delegate Marchetti again, she always motions for unmods." Personality-driven, not stat-driven.
+- **Unlockable gavels, dais decorations, cosmetic flair.** Low-stakes collectibles.
+- **A "highlight reel" at the end** of your best rulings, funniest chaos moments. Shareable — this is huge for a niche community game; MUN people will absolutely post their scores on LinkedIn and MUN Discord servers.
+
+---
+
+## Part 5: How to Actually Build It
+
+For a web-hosted game with this kind of interactivity, here's the honest technical path:
+
+**Recommended stack:**
+- **Phaser 3** (JavaScript/TypeScript) or **PixiJS** for the 2D game rendering — both are mature, well-documented, run in any browser, no plugins needed.
+- **React** for menus, briefings, debrief screens (anything UI-heavy but not real-time).
+- **Vite** as your build tool.
+- **Zustand or Redux** for game state.
+- Host on **Vercel, Netlify, or itch.io** (itch.io is great for indie games and has a built-in MUN-adjacent audience of student developers).
+
+**Alternative:** If you want to prototype faster and don't mind a heavier runtime, **Godot 4** with its HTML5 export is excellent, and its scene/node system fits this kind of "many independent actors on screen" game very well. Unity's WebGL builds are notoriously bloated for something this lightweight — I'd avoid it here.
+
+**Development order I'd recommend:**
+
+1. **Paper prototype first.** Seriously. Print delegate cards, motion cards, run a mock session with a friend as "the committee." You'll learn more in an afternoon than in two weeks of coding.
+2. **Vertical slice:** one committee, five delegates, three motion types, no crises. Get the *feel* of the gavel + motion cards + speakers list right. This is your make-or-break milestone.
+3. **Add systems one at a time:** crisis notes → tone system → bloc dynamics → meta-progression.
+4. **Playtest with actual MUN people early.** UNC has an active MUN team (I'm guessing you know this given your email) — they'll tell you within 10 minutes what feels authentic and what doesn't.
+5. **Art last.** Placeholder rectangles until the mechanics sing. Then commission or make simple, stylized art — a clean, semi-flat "diplomatic" aesthetic (deep blues, gold accents, wood-grain dais) will read better than anything trying to be photorealistic.
+
+---
+
+## Part 6: The Biggest Risks to Avoid
+
+- **Over-simulating procedure.** Robert's Rules has ~200 motions. You need maybe 15. Cut aggressively.
+- **Making it a wall of text.** Every piece of information should have a *visual* representation first, text second.
+- **No feedback loop on "why did I lose points?"** The debrief must be specific: "You recognized Delegate Chen 6 times and Delegate Okoye 0 times" — not "Equity: C-."
+- **Trying to teach everything.** Pick the 3-4 skills you most want to develop and design ruthlessly around those.
+
+---
+
+If you want, I can go deeper on any of these — I could sketch out the state machine for a single committee session, mock up the UI layout, write a design doc you could hand to a collaborator, or draft the delegate personality/AI system. What would be most useful next?
+
+[07/11/2026 17:31:56 +00:00] Seifer, Evan:
+I want this game to be very quick and simple. I want the game to simulate the real order of committee: roll call, moderated caucus, unmoderated caucus, voting procedure (q&a or 2 for 2 against with amendment period), and a timed crisis. The whole game should take less than 30 minutes but have replayability. The actual topic of the committee should not matter for the playing experience. I also do not know how to code or make games at all. Would it be possible to code it with you? Let me know how to do that or how you can assist if I use Godot or something else
+
+Response:
+# Great news: yes, we can absolutely build this together
+
+Your scope is actually *ideal* for a first game — tight, well-defined, and cleverly designed so the topic doesn't matter (which eliminates the hardest content problem). A 20-30 minute session game with the phases you listed is very achievable, and I can walk you through every line of code.
+
+Let me give you an honest breakdown of your options and then a concrete recommendation.
+
+---
+
+## Your Realistic Options (Ranked for a Non-Coder)
+
+### Option 1: HTML + JavaScript in the browser ⭐ **My strong recommendation for you**
+
+**Why this is best for your situation:**
+- **Zero setup.** You open a text file, save it, double-click, and it runs in your browser. No installing engines, no build tools, no compiler errors from missing dependencies.
+- **I can write complete, working files** and you just paste them into a folder. You'll see results in 30 seconds.
+- **Web-hosting is trivial.** Drag the folder to Netlify or itch.io → you have a public URL. Done.
+- **Your game doesn't need fancy graphics or physics.** It's fundamentally a UI game — buttons, timers, cards, text. HTML/CSS/JS is *literally designed for this*. Using Godot for this would be overkill, like using a chainsaw to slice bread.
+- **You'll actually learn something transferable.** HTML/CSS/JS basics are useful forever.
+
+**What you need to install:** Nothing. You already have a browser. Optionally, download **VS Code** (free text editor) to make editing files pleasant.
+
+### Option 2: Godot 4
+
+Godot is a real game engine and it *can* export to web. But for your game, you'd spend the first several hours learning Godot's node system, its scripting language (GDScript), its scene editor, and its export settings — before writing any actual game logic. For a UI-driven game with no physics, no sprites moving around, no animations beyond simple transitions, this is unnecessary friction.
+
+I'd only recommend Godot if you later want to expand into something more visually rich.
+
+### Option 3: No-code tools (Construct, GDevelop)
+
+These sound appealing but they're actually *harder* for our workflow — I can't write you a file you just paste in. You'd have to click through their editors while I describe steps, which is slow and error-prone.
+
+---
+
+## How We'd Actually Work Together
+
+Here's the concrete workflow if you go with **Option 1 (HTML/JS)**:
+
+1. **You install VS Code** (5 minutes, free, one download). Optional but recommended.
+2. **You make a folder** on your desktop called `mun-chair-game`.
+3. **I write you complete files** — `index.html`, `style.css`, `game.js` — as downloadable artifacts. You save them into that folder.
+4. **You double-click `index.html`** — the game opens in your browser. That's it.
+5. **We iterate.** You play, tell me what feels off, I revise the files. You paste the new version in and reload the browser.
+6. **When it's ready, we host it.** I walk you through dragging the folder onto Netlify (free, takes 2 minutes) — you get a public URL.
+
+You will not need to understand the code to play it or host it. You *will* pick up some pattern recognition over time, which will let you make small tweaks yourself (change colors, edit delegate names, adjust timers) — I'll always tell you which specific line to change.
+
+---
+
+## Proposed Game Structure (Confirming Before I Build)
+
+Based on what you described, here's the loop I'd build. Confirm or adjust and I'll start coding:
+
+| Phase | Duration | What the player does |
+|---|---|---|
+| **Setup** | 15 sec | Committee name randomly generated, ~8 delegates with random names/countries, difficulty picker |
+| **Roll Call** | ~1 min | Tap each delegate to mark "Present" or "Present and Voting." Random delegates may be absent — spot them. Score: speed + accuracy. |
+| **Moderated Caucus** | ~5 min | Motion cards appear — approve/deny procedurally. Manage the speakers list: tap delegates to recognize. Watch engagement meters. Rule on points of order. |
+| **Unmoderated Caucus** | ~3 min | Timer runs. Delegates form blocs (visualized as clusters). You handle interrupt events: extension motions, disputes, a delegate asking a procedural question. |
+| **Crisis Break** | ~2 min | A crisis note slides in. 3-4 timed decisions cascade. Your rulings affect delegate mood going into voting. |
+| **Voting Procedure** | ~4 min | Draft resolution appears. Choose Q&A or 2-for/2-against format. Manage amendment period (friendly/unfriendly rulings). Final vote. |
+| **Debrief** | 30 sec | Scored on 4 axes: Procedural Accuracy, Speaker Equity, Time Management, Crisis Response. Grade + shareable summary. |
+
+**Total: ~15-20 min per playthrough.** Replayability comes from: randomized delegate personalities, randomized motion patterns, randomized crisis events, difficulty tiers, and score-chasing.
+
+---
+
+## What I Need From You to Start
+
+Just answer these three quick questions and I'll build you a working v1 in this conversation:
+
+1. **Aesthetic vibe:** Formal/professional (UN blues, gold, serif fonts) or playful (bright colors, rounded, cartoonish)? I'd lean formal-but-clean for authenticity.
+2. **Are you okay installing VS Code**, or do you want to just use Notepad/TextEdit? (VS Code makes life much easier, but it's not required.)
+3. **Do you want me to build the whole thing at once, or phase by phase?** I'd recommend phase by phase — I build Roll Call first, you play it, we make sure it feels right, then we add Moderated Caucus, etc. This way you're never overwhelmed and we catch design issues early.
+
+Once you answer, I'll start with the shell of the game + Roll Call phase and you'll be playing something within one message.
+
+[07/11/2026 17:46:49 +00:00] Seifer, Evan:
+1. Make the aesthetic formal enough that this is taken seriously, but make it feel friendly and handmade, like the campy low-budget vibes of a crisis update. Try adding some subtle hints of Carolina Blue and references to the University of North Carolina at Chapel Hill and UNCMUNC, especially the Ram. 2. I already have VS Code, just let me know how to organize the folders and if I should install any plugins. 3. Let's build it phase by phase. I am hesitant about the "Crisis Break" phase's inclusion outside of an optional minigame. Building it phase by phase will help me tell you how to tailor it to the specific style of Chairing we do at UNCMUNC
+
+Response:
+# Perfect — let's set you up and build Phase 1
+
+Your aesthetic direction is great and very doable: think **Wes Anderson meets a college dorm crisis staff at 2am** — clean serif headers, Carolina Blue accents, subtle paper/tape textures, hand-drawn ram doodles in the margins, everything slightly imperfect on purpose. I'll build that vibe into the CSS from the start.
+
+Noted on Crisis Break — I'll leave it out of the main loop and we can revisit it as an optional side mode later. Your instinct is right: forcing a crisis into every session breaks the "this is what chairing actually feels like" authenticity.
+
+---
+
+## Step 1: Folder Setup
+
+Create this structure anywhere convenient (Desktop is fine):
+
+```
+mun-chair-game/
+├── index.html
+├── style.css
+├── game.js
+└── assets/
+    └── (we'll add images/fonts here later if needed)
+```
+
+Just make the empty folder and the empty `assets` subfolder — I'll give you the three files as artifacts below.
+
+## Step 2: VS Code Setup
+
+**Install just one extension** — that's all you need:
+
+- **Live Server** (by Ritwick Dey) — right-click `index.html` → "Open with Live Server" and it auto-reloads the browser every time you save. Massive quality-of-life upgrade over double-clicking the file.
+
+To install: open VS Code → click the Extensions icon on the left sidebar (four squares) → search "Live Server" → Install.
+
+Optional but nice:
+- **Prettier** (auto-formats code so it looks clean)
+- **Live Preview** (Microsoft's alternative to Live Server, also fine)
+
+## Step 3: How to Run the Game
+
+1. Open VS Code → File → Open Folder → select your `mun-chair-game` folder.
+2. Create the three files (`index.html`, `style.css`, `game.js`) — just right-click in the file explorer panel and choose "New File."
+3. Paste the contents from each artifact below into the matching file.
+4. Right-click `index.html` → "Open with Live Server."
+5. Your browser opens automatically. When you save any file, the browser refreshes on its own.
+
+---
+
+## Phase 1: The Shell + Roll Call
+
+Here's what I'm building for you in this first pass:
+
+- **Title screen** with the game's name, a UNCMUNC-flavored subtitle, and a "Begin Session" button
+- **Committee generation** — random committee name (e.g., "UNSC," "WHO," "DISEC"), 8 randomly-selected delegates with country names
+- **Roll Call phase** — each delegate is called in order. You tap **Present**, **Present and Voting**, or **Absent**. Some delegates will actually be absent (they don't respond) and you need to mark them as such after a short delay. Scoring rewards accuracy and reasonable pace.
+- **Transition** to a placeholder "Phase 2 coming soon" screen so we know the flow works
+
+Let me generate the three files now.
+# Phase 1 is ready to play
+
+I've built you a working shell + Roll Call phase. Before you touch the code, here's everything you need.
+
+---
+
+## Folder Setup
+
+Create a folder on your desktop called **`point-of-order`** (or whatever you like). Put all three files directly inside it — no subfolders:
+
+```
+point-of-order/
+├── index.html
+├── style.css
+└── game.js
+```
+
+**To run it:** double-click `index.html`. It opens in your browser. That's it. No server, no build step.
+
+**To edit:** open the whole folder in VS Code (`File → Open Folder…`), edit any file, save, and refresh your browser.
+
+## VS Code Plugins (Optional but Nice)
+
+Only install these if you want — none are required:
+
+1. **Live Server** (by Ritwick Dey) — right-click `index.html` → "Open with Live Server" and it auto-refreshes the browser every time you save. Huge quality-of-life upgrade.
+2. **Prettier** — auto-formats code so it stays readable.
+3. **Live Preview** (by Microsoft) — alternative to Live Server, built by MS.
+
+That's it. Skip anything else for now.
+
+---
+
+## What This Build Contains
+
+- **Title screen** — "Point of Order: A Chair Simulator," with a UNCMUNC stamp, a little Ram emoji doodle (placeholder — happy to swap in real art later), and Carolina blue accents.
+- **Briefing memo** — a slightly-crooked "CONFIDENTIAL-ISH" memo that randomly generates the committee (UNSC, DISEC, WHO, etc.), session number, delegate count. Topic is explicitly redacted, per your design.
+- **Roll Call** — 8 randomized country delegations appear one at a time on a card that "deals in." Each responds with "Present," "Present and voting," or stays silent. You mark them via three buttons or **keyboard shortcuts**: `1/P` = Present, `2/V` = Voting, `3/A` = Absent.
+- **Scoring** — Accuracy (did you match their response?) + Pace (were you in the 1.2–4 second sweet spot? Too fast = didn't listen, too slow = dais is stalling).
+- **Transition screen** — score card + flavor text that changes based on how well you did, then loops back to the title.
+
+## Aesthetic Choices I Made
+
+- **Playfair Display** for headers (formal, serifed, gravitas).
+- **Special Elite** (typewriter font) for stamps, dates, procedural labels — the "handmade committee packet" feel.
+- **Lora** for body text.
+- Cream paper background with subtle texture, Carolina blue as primary action color, a red rubber-stamp accent for "official" markings, gold tape on the memo.
+- Everything is *slightly* rotated (0.4°–2°) so it feels handmade rather than sterile.
+
+---
+
+## What I Want Your Feedback On Before Phase 2
+
+Play it a few times and tell me:
+
+1. **Roll call pacing** — is 8 delegates the right count? Too many/few? Should the "silence" for absent delegates last longer to make the guess feel weightier?
+2. **Absent rate** — currently ~15%. Feel right, or should absents be rarer/more common?
+3. **The "Present and voting" mechanic** — right now it's random. Should certain delegate personalities always vote (P&V feels like a personality trait IRL)?
+4. **UNCMUNC-specific tweaks** — anything about how *your* Secretariat runs roll call that I should mirror? (E.g., some conferences do a full alphabetical sweep, others do it by bloc, some allow late arrivals to add themselves.)
+5. **The Ram + UNC references** — right now they're subtle (the stamp, the "Committee Room 3" footer, Carolina blue). Want more? Less? Should I add a specific UNCMUNC easter egg somewhere?
+6. **Crisis Break concern noted** — we can absolutely make it optional/skippable, or reframe it as a "note-passing minigame" that runs *during* other phases rather than as its own dedicated phase. Tell me how UNCMUNC handles crisis in a GA-style committee and we'll design around your reality.
+
+Once you've played and given me notes, I'll refine Roll Call (if needed) and build **Phase 2: Moderated Caucus** — which is the meatiest phase, so getting your input on how UNCMUNC runs mods is important before I write it.
+
+[07/11/2026 18:15:45 +00:00] Seifer, Evan:
+Would it be possible to show all 8 delegates in the same room in a slight curve around the player and when they respond "present" or "present and voting" it shows the delegate raising their placcard? The delegates' position and location in the room can be randomized, but the roll call should go in alphabetical order. At the begginging of the game, you can equally and randomly assign these personalities to the delegates: the Power-Del who will always respond with "the delegation of [...] is present and voting" and will be very aggressive and assertive to the other delegates and stealing their ideas while brown nosing the chair and hating other Power-Dels, the Dem-Boy who will always respond with "present and voting" and is not very assertive but did a lot of research on the topic so they stick to one of the Power-Dels like the Power-Del's henchman, the CarolinaMUN-Style del who will always respond with "present" and is very personable while encouraging everyone's ideas to be equally heard in the directive despite not doing that much research into the topic (the CarolinaMUN-Style del typically goes along with the general consensus of the other dels in the room, but when everyone is agreeing, the CarolinaMUN-Style del will take an opposing position), and the Slacker who does not really know what they are doing and will respond with "present" or "here". If a delegate is absent (there does not always have to be an absent delegate), then there should only ever be one absence and it should always be one of the Slackers.  
+
+Response:
+# Great direction — this transforms Roll Call from a card-flip into an actual *room*
+
+Locking in the personality system this early is smart because these traits will pay dividends in every later phase (moderated caucus especially — Power-Dels dominate the speakers list, Dem-Boys always motion in support of their boss, CarolinaMUN-Style dels break consensus, Slackers barely speak). I'm going to store personalities on each delegate so they persist across all phases.
+
+Here's what I've built into this update:
+
+**Room layout**
+- 8 delegate seats arranged in a shallow arc facing the dais (which sits at the bottom of the committee room, where you the Chair are)
+- Seat positions randomized each game — closer delegates on the outer edges, farther ones in the middle back
+- Each delegate has a little figure (head + shoulders) with their country placard resting on the table in front of them
+
+**Personality assignment**
+- Exactly 2 of each personality per session (2 Power-Dels, 2 Dem-Boys, 2 CarolinaMUN-Style, 2 Slackers), shuffled and assigned randomly to the 8 delegates
+- Each Dem-Boy is silently assigned a Power-Del "boss" at setup (this will matter enormously in mod caucus)
+- Personalities are stored on the delegate object so they're available for every future phase
+
+**Roll call flow**
+- Alphabetical order (sorted at setup, independent of seat position — so your eyes have to scan the room to find who's being called)
+- The currently-called delegate is highlighted (scaled up, gold glow around their placard)
+- Their response appears as a speech bubble above them, using personality-appropriate lines:
+  - Power-Del: *"The delegation of [Country] is present and voting."*
+  - Dem-Boy: *"Present and voting."* / *"Present and voting, chair."*
+  - CarolinaMUN-Style: *"Present!"* / *"Present, chair."*
+  - Slacker: *"Present."* / *"Here."* / *"here."* / *"Uh, present."*
+- When you mark them Present or P&V, their **placard lifts off the table** with a little rotation — a visible acknowledgment that stays raised for the rest of the phase
+- Absent delegates: no speech bubble appears (just silence). You have to wait, notice nothing came, and mark them absent. Their seat then dims.
+
+**Absence rule**
+- Only ever one absence per session, and it's always a Slacker (never guaranteed — ~50% chance)
+- If both slackers are present, no one is absent that game
+
+**Keyboard shortcuts** stay: `1` Present, `2` P&V, `3` Absent (also works with `P`/`V`/`A`).
+
+Updating all three files now.
+# Version 2: The Committee Room is Now Visible
+
+Big update. Paste the new versions of all three files, save, and reload.
+
+## What's New
+
+**A visible committee room.** Instead of a card-based roll call, you now see all 8 delegates seated in an arc facing the dais (which is at the bottom, labeled "YOU ARE HERE"). The room has wood-grain floors, subtle Carolina blue lighting, and a gold-trimmed dais banner.
+
+**Placards on the table that physically raise.** Each delegate has a name placard sitting flat in front of them. When you mark them:
+- **Present** → placard raises up and tilts (white)
+- **P&V** → placard raises with a warm cream/gold tint
+- **Absent** → the whole seat fades and desaturates
+
+**Speech bubbles pop above the responding delegate.** When they're called, the whole seat scales up with a golden glow, and their line appears in a hand-drawn speech bubble above their head. Absent delegates show `( … )`.
+
+**Alphabetical calling order.** The chair calls delegations A→Z regardless of seat position, as requested. The "calling country" is prominently displayed under the room.
+
+## Personalities (2 of Each, Randomly Assigned Each Game)
+
+| Personality | Roll Call Response | Expected Mark |
+|---|---|---|
+| **Power-Del** | *"The delegation of [X] is present and voting."* | P&V |
+| **Dem-Boy** | *"Present and voting."* | P&V |
+| **CarolinaMUN-Style** | *"Present!"* / *"Present, chair."* | Present |
+| **Slacker** | *"Present."* / *"Here."* / *"Uh, present."* | Present |
+
+Under the hood, each Dem-Boy is silently assigned a Power-Del "boss" — that data isn't used yet, but it's stored so I can wire it into the Moderated Caucus phase (Dem-Boy follows their boss, Power-Dels feud, CarolinaMUN-Style shifts with consensus, etc.).
+
+## Absence Rules
+
+- ~50% of sessions have zero absent delegates.
+- The other ~50% have **exactly one** absent delegate, always a Slacker (never a Power-Del, Dem-Boy, or CarolinaMUN-Style). That matches your spec.
+
+## Play Notes
+
+- Roll call remains keyboard-friendly: `1/P` = Present, `2/V` = P&V, `3/A` = Absent.
+- The seat arc positions are fixed, but which delegate sits in which seat is randomized every game, so the room looks different each playthrough.
+
+---
+
+## Feedback I Need Before Phase 2
+
+1. **Room proportions** — does 440px height feel right, or should the room be bigger/deeper?
+2. **Delegate figures** — right now they're simple CSS "head + shoulders" stick figures. Do you want me to keep this stylized/handmade look, or aim for something more detailed later (small illustrated portraits, name tags with country flags, etc.)?
+3. **Placard raise animation** — should it be more dramatic (bigger lift, longer arc), or is a subtle raise better?
+4. **Speech bubble timing** — currently ~700ms delay before the response appears. Feels right? Too long?
+5. **The "boss" relationships and consensus behavior for CarolinaMUN-Style dels** — I've stored the data but they'll fully come alive in Moderated Caucus. When we get there, walk me through **exactly how UNCMUNC runs a mod caucus** — how motions are made, how the speakers list works, how you handle points of order/inquiry, and whether you use a whiteboard/tracker for who's spoken.
+
+[07/11/2026 18:36:27 +00:00] Seifer, Evan:
+Right now the screen is too long and I have to scroll to see the whole thing. Can you combine the UI of the delegates in the room and the roll call selector to be unified. Make it aesthetically pleasing, but emphasize user experience. Also, for absent dels, before the rollcall even starts, display them as a placard with no person. In the future, I would like to replace the CSS "head + shoulders" stick figures with my own illustrations. Can you make each future iteration so that when I have the illustrations ready, all we have to do is drop them in? Also, when the Slacker responds "here," in a real committee, when a delegate says "here" the chair is supposed to correct them and ask if they are "present or present and voting." Can you implement that as a temporary button that prompts the Slacker to respond again? If the slacker instead says "Present" or "Uh, present" then move on like normal.
+
+Response:
+# Version 3: Unified UI, Empty Seats, Illustration-Ready, "Here" Correction
+
+Great notes — all four are meaningful improvements. Here's what's changing:
+
+**1. Everything fits on one screen.** Compact phase header at top, room in the middle (now sized with viewport units so it scales), and the dais controls fused directly below the room as a single unified horizontal bar. No more scrolling.
+
+**2. Absent delegates show as empty chairs from the start.** When the room first appears, absent delegates have their placard sitting on the table but no figure behind it — visually the seat is empty. The chair can (and should) notice this before roll call even begins. When you correctly mark them absent later, the placard also dims.
+
+**3. Illustration-ready architecture.** I've added a `DELEGATE_ART` config object at the top of `game.js`:
+
+```js
+const DELEGATE_ART = {
+    power:    null,  // e.g. "assets/power-del.png"
+    demboy:   null,
+    carolina: null,
+    slacker:  null,
+    empty:    null,  // for the "absent, no delegate" chair
+};
+```
+
+When you're ready, drop your illustrations into an `assets/` folder next to `index.html`, set the path strings above, and the render function will automatically swap in `<img>` tags instead of the CSS stick figures. **No other code changes needed.** I'll keep this config maintained through every future phase so all art swaps happen in one place.
+
+**4. The "Here" correction mechanic.** When a Slacker responds with "Here." or "here.", the three normal action buttons are temporarily replaced with a single prompt button: **"Correct: 'Present or present and voting?'"** Clicking it makes the delegate respond again with "Present." or "Uh, present." Then the normal buttons return. If you skip the correction and mark them anyway, you take a small procedural accuracy penalty (this is a real Chair skill, so it should matter).
+# Version 3: Unified, Fits-In-Viewport, Illustration-Ready
+
+Paste the new versions of all three files and reload. Here's what changed:
+
+## Fits On One Screen
+
+The Roll Call phase is now a single fixed-height viewport with no scrolling. Layout is:
+- **Slim header** (phase label left, instructions right) — one line
+- **Committee room** — flexes to fill remaining vertical space
+- **Dais bar** at the bottom — a unified white panel with a bit of gold "tape" that contains the calling info, action buttons, and progress meter all in one row
+
+If your browser window is small, the room shrinks; delegates and placards stay in place.
+
+## Empty Chairs From the Start
+
+Absent delegates now render as an **empty chair icon with just their placard** the moment the room is drawn — before roll call even begins. You can visually scout the room and spot who's missing before their name is called. When you get to their turn, no speech bubble appears (just silence). Their placard stays dimmed.
+
+## Illustration-Ready Architecture
+
+At the top of `game.js` you'll find:
+
+```js
+const DELEGATE_ART = {
+    power:    null,
+    demboy:   null,
+    carolina: null,
+    slacker:  null,
+    empty:    null,
+};
+```
+
+When your illustrations are ready:
+1. Drop the image files into an `assets/` folder next to your HTML
+2. Change `null` to the path, e.g. `"assets/power-del.png"`
+3. Save. Done.
+
+The renderer automatically swaps in an `<img>` tag when a path is set, otherwise it uses the CSS fallback figures. **No other code changes needed, ever.** Recommended: transparent PNGs, ~120×120px, front-facing. Each personality can have its own art (or you can leave some as CSS and others as images during the transition).
+
+## The "Here" Correction Mechanic
+
+When a **Slacker** says "Here" or "here" (~45% of Slacker responses):
+- A yellow correction button slides in *in place of* the P/P&V/Absent buttons: **"Correct: 'Present or present and voting?'"**
+- Clicking it (or pressing `C` / `Space`) removes their bubble, the delegate pauses, then re-responds — this time with "Present" or "Uh, present" (never "here" again)
+- The P/P&V/Absent buttons return, and you mark them normally
+- **If you skip the correction** and just mark them Present directly, that's allowed — but it counts as a procedural miss. Each missed correction costs 6% off your Accuracy score, and the debrief now shows `(missed N corrections)` next to the accuracy figure
+
+This teaches the exact behavior real chairs are drilled on: never let "here" slide.
+
+## Small QoL Additions
+
+- Placard has a max-width so long country names ellipsize instead of breaking the layout
+- The correction button has its own keyboard shortcut (`C` or Space)
+- Score debrief flavor tuned slightly for the new procedural penalty
+
+---
+
+## Test Notes I'd Love
+
+1. Does everything fit in your viewport now without scrolling?
+2. Is the correction button obvious enough when it appears, or should it be more visually urgent (flashing, red border, etc.)?
+3. Are you okay with ~45% of Slacker responses being "here"? Too frequent? Too rare?
+4. Should missing a correction penalize *pace* too (since you moved too fast), or is the accuracy hit enough?
+
+When you're happy with Roll Call, tell me how UNCMUNC runs Moderated Caucus and I'll build Phase 2.
+
+[07/11/2026 18:52:25 +00:00] Seifer, Evan:
+Instead of the button saying "Correct: 'Present or present and voting?'" make it say "Delegations must be either present or present and voting." Also, when a long country name is a Power-Del and at the side of the screen, their dialogue saying their roll call status is blocked by the edge of the window. Fix this by making it so Power-Dels cannot be seated on the leftmost end or rightmost end of the seats. Finally, on the title screen remove "You have been dais'd." from the subheading and "a love letter to Committee Room 3" on the bottom. On the "MEMORANDUM · CONFIDENTIAL-ISH" screen, replace that title with "Committee Overview", remove the session indicator, and remove "Topic redacted. It doesn't matter. It never does."
+
+Response:
+Locking in these four changes. Two are pure text edits (title screen, memo, correction button copy); the seating constraint is a small logic change — I'll require Power-Dels to sit only in seats 1–6 (never the leftmost or rightmost), which keeps their long "The delegation of…" bubble safely inside the room.
+
+# Version 4: Copy Fixes + Power-Del Seat Constraint
+
+All four changes are in. Paste the updated `index.html` and `game.js` and reload — **`style.css` didn't need to change**, so leave it as-is.
+
+**What changed:**
+
+1. **Correction button copy** now reads *"Delegations must be either present or present and voting."*
+2. **Power-Dels can no longer sit in seats 0 or 7** (the leftmost and rightmost edge seats). The seat-assignment logic places Power-Dels into interior seats first, then fills the remaining seats (including edges) with the other personalities. Their long "The delegation of [Country] is present and voting." line will no longer clip off-screen.
+3. **Title screen** — removed *"You have been dais'd."* and *"a love letter to Committee Room 3."*
+4. **Briefing screen** — renamed to **"Committee Overview,"** removed the Session indicator, and removed the *"Topic redacted…"* footer.
+
+Ready for your next round of notes, or say the word and I'll start on **Phase 2: Moderated Caucus** — when you're ready for that, walk me through exactly how UNCMUNC runs mods (motion process, speaker recognition, points, timing conventions).
+
+[07/12/2026 18:53:31 +00:00] Seifer, Evan:
+One last note for phase 1, once the player corrects a delegate once by saying "Delegations must be either present or present and voting." then no one should say "here" or "uh, here" again. Other than that, we can move on to phase 2. This phase should start with the player pushing a button to ask "Are there any points or motions on the floor?" For the sake of this phase, at least 3 delegates should always be raising their placards and they should only be able to motion for mods, round robins, or unmods. If a delegate motions for an unmod, then a button should pop up that says "The chair rules that dilatory and would look favorably upon a moderated caucus at this time." Bold the word dilatory. After that button is pressed, give that delegate a second chance to propose a mod or round robin. Mods should always be proposed in this format: "2 30 on [specific topic]." Round robins should always be proposed in this format: "30 second round robin on [specific topic]." Unmods should always be proposed in this format: "7 minute unmod." When the player clicks on a delegate for a motion, the proposed motion should be written down on an agenda called "Associate Chair's Notes". Mods should always be written in this format: "[shortened delegate name] 2 30 [one/two word shortened topic]". Round robins should always be written in this format: "[shortened delegate name] 30 sec rr [one/two word shortened topic]". Unmods should always be written in this format: "[shortened delegate name] 7 min unmod". The player should only click on 3 delegates for motions before voting on the motions. For voting, the player should select from the agenda the most disruptive motion and say "All those in favor of [delegate name]'s motion for [originally proposed motion] please raise your placards high." You can randomize the voting, but a motion passes if a simple majority of the delegates present in the room vote in favor. If the simple majority does not vote in favor of the motion, the player should say "All those opposed to [delegate name]'s motion for [originally proposed motion] please raise your placards high." If the motion fails, have the player select the next most disruptive motion and do it again. If the second motion also fails, have the player select the final motion and do it again, but make sure that one always passes. There is more to add to this phase, but I want to see this part first before doing anything more
+
+Response:
+Locking in the Phase 1 tweak (correction persistence) and building Phase 2. Let me walk through the design I'm implementing so we're aligned before I hand over the code:
+
+**Phase 2 State Machine**
+
+1. Player sees an idle dais with the button *"Are there any points or motions on the floor?"*
+2. Clicking it makes **5 present delegates** raise placards (visible gold "!" badges bouncing above their heads). Instructions update: *"Recognize a raised placard."*
+3. Player clicks a raised delegate → speech bubble delivers a motion, formatted per personality:
+   - **Power-Del & Dem-Boy** → mod: *"2 30 on funding mechanisms."*
+   - **CarolinaMUN-Style** → round robin: *"30 second round robin on bloc positions."*
+   - **Slacker** → unmod: *"7 minute unmod."*
+4. If unmod → dais shows the big button *"The chair rules that **dilatory** and would look favorably upon a moderated caucus at this time."* → clicking it makes that same delegate re-propose (this time forced to mod or RR).
+5. Motion auto-writes to **Associate Chair's Notes** (right-hand notepad panel) in shorthand: `Fra 2 30 Funding`, `Bra 30 sec rr Blocs`, etc.
+6. Repeat until **3 motions** are noted, then dais shows *"Move to vote →"*
+7. **Voting phase**: player clicks a motion in the notepad. Dais shows the pre-filled prompt button: *"All those in favor of France's motion for 2 30 on funding mechanisms please raise your placards high."* Clicking triggers a placard-raise animation on the voting delegates + shows the tally.
+8. Simple majority of present delegates = pass. If pass → phase complete. If fail → *"All those opposed…"* button auto-appears → tally shown → motion gets struck through in the notepad → player picks next.
+9. **Third attempt always passes** (as you specified — we always resolve the phase).
+
+**Design notes**
+
+- Delegates that motioned but weren't voted on keep their placards up until the voting phase starts.
+- Present delegates who vote in favor visually raise their placards higher during the tally.
+- The absent delegate (if any) never votes.
+- The `DELEGATE_ART` illustration-swap system stays intact — no changes needed when you drop in art later.
+- Layout still fits in one viewport: slim header on top, committee room + notepad side-by-side, dais action bar at the bottom.
+- The "!" badges above raised placards are CSS for now, but I'll route them through the same art-swap pattern so you can replace them with a hand-drawn "please recognize me" doodle later if you want.
+
+Building the three files now.
+# Version 5: Phase 2 — Points & Motions is live
+
+Paste all three updated files, reload, and play through. Here's what's new:
+
+## Phase 1 tweak
+Once you use the correction ("Delegations must be either present or present and voting") on **any** Slacker, no delegate in the session says "here" again. If both Slackers happen to try "here" in the same session, the first triggers the button — the second will just say "Present."
+
+## Phase 2 flow
+
+**1. Opening prompt.** The dais bar starts with a single button: *"Are there any points or motions on the floor?"* Click it.
+
+**2. Placards go up.** Five present delegates (always ≥3) raise their placards. Their seats get a bouncing gold **!** badge and become clickable.
+
+**3. Recognize a delegate.** Click any raised placard. They speak the motion in a speech bubble in the format you specified:
+- **Power-Del / Dem-Boy** → *"2 30 on funding mechanisms."*
+- **CarolinaMUN-Style** → *"30 second round robin on bloc positions."*
+- **Slacker** → *"7 minute unmod."*
+
+**4. Unmod handling.** If it's an unmod, the dais bar shows a gold button reading *"The chair rules that **dilatory** and would look favorably upon a moderated caucus at this time."* (the word **dilatory** is bold + underlined). Click it, and that same delegate re-proposes with a mod or round robin. If it's a mod or RR, you just click *"Note motion & recognize next delegate →"*.
+
+**5. Associate Chair's Notes.** Every accepted motion appears in the notepad on the right, using your exact shortened formats:
+- `Fra 2 30 Funding`
+- `Ind 30 sec rr Blocs`
+- `Slk 7 min unmod` *(only if you failed to rule it dilatory — currently this can't happen since dilatory is forced, but the formatter supports it for future difficulty tuning)*
+
+**6. After 3 motions, move to vote.** Click "Move to vote on the motions →". The instruction updates: *"Select the most disruptive motion from your notes and put it to a vote."*
+
+**7. Voting.**
+- Click a motion in the agenda. It highlights blue.
+- Dais shows a green button: *"All those in favor of France's motion for 2 30 on funding mechanisms please raise your placards high."*
+- Click it — delegates who vote yes raise their placards (gold-tinted, tilted left).
+- Tally shows: `4 in favor of 5 needed.`
+- **Pass:** verdict flashes green, click *Proceed*, and the game transitions to the placeholder Phase 3 screen with the passed motion displayed.
+- **Fail:** oppose call button appears (red): *"All those opposed…"* — opposing placards raise (red-tinted, tilted right). Motion is struck through in the agenda. You return to selecting a motion.
+- **Third vote always passes** (per your spec) — so the phase always resolves.
+
+**Simple majority = floor(present/2) + 1.** With 8 present, needed = 5. With 7 present (one absent Slacker), needed = 4.
+
+## Design notes I want your feedback on
+
+1. **"Most disruptive" is currently player-judgment.** The game doesn't tell you which motion is objectively most disruptive — it just accepts whatever you pick. That felt truer to real chairing (you're the one making the call). Want scoring pressure here? E.g. picking a shorter mod over a longer unmod loses points?
+2. **The proposer always votes yes** in the current implementation. Realistic, but let me know if that should vary.
+3. **Speech bubbles disappear after you accept the motion.** Should they linger longer so you have time to read?
+4. **Personality-motion pairing:** Power-Dels/Dem-Boys motion mods, CarolinaMUN-Style motions RRs, Slackers motion unmods. Feels right, or should Power-Dels occasionally throw a curveball?
+
+Tell me what to adjust, then let me know what comes next in the phase — presumably setting the timer, recognizing the proposer as the first speaker, and running the speakers list.
+
+[07/12/2026 19:16:01 +00:00] Seifer, Evan:
+Before we carry on, whatever edits you made changed the look of the delegates to be different looking head and shoulders. Please revert that. The names of the delegates also no longer fit in the placards (Philippines having ... instead of the whole word) and the dialogue is sticking out of the speech bubbles to the right. Diagnose the problem and fix all of those aesthetic issues before we go into fixing the other issues with phase 2.
+
+Response:
+Good catch — you're right, all three issues are real regressions from v4/v5 where I added new styles for Phase 2 and inadvertently changed things I shouldn't have. Let me diagnose each:
+
+**Diagnosis**
+
+1. **Delegate figures look different** — When I added the voting/placard-raise animations in v4, I modified the `.delegate-figure`, `.delegate-head`, and `.delegate-shoulders` rules to accommodate the tilt/rotation transforms. Side effect: the head/shoulders proportions and colors shifted.
+2. **Placard ellipsizing "Philippines"** — In v3 I added `max-width` + `text-overflow: ellipsis` to prevent very long names from breaking the row. The max-width is too tight and the font size is too big for names like "Philippines," "South Africa," "Indonesia."
+3. **Speech bubble text overflowing right** — The bubble likely has a fixed `width` (not `max-width`) or is missing `word-wrap: break-word` / `white-space: normal`, so long Power-Del lines ("The delegation of Philippines is present and voting.") spill past the bubble's right edge.
+
+**Fix approach**
+
+Rather than regenerate the whole stylesheet from memory (risk of regressing other things), the cleanest fix is a small surgical override block appended to the **end** of your `style.css`. CSS cascade means these rules will win over the broken ones without me touching the rest of the file.
+
+**One thing I need from you before I write the final fix:** could you paste the current contents of your `style.css` into the chat? Specifically I need to see the rules for:
+
+- `.delegate-figure`, `.delegate-head`, `.delegate-shoulders` (and any variants like `.delegate-figure.power`, etc.)
+- `.placard` and any placard modifier classes
+- `.speech-bubble`
+
+That way I can (a) confirm exactly what changed vs. v3, (b) write a proper artifact update instead of a patch-on-top, and (c) make sure the head+shoulders match what you liked before. If you'd rather not paste it, I can write a "best-guess override block" right now and iterate, but the paste is the cleaner path and takes 10 seconds.
+
+[07/12/2026 19:23:12 +00:00] Seifer, Evan:
+[Vision Image(s)]
+When delegates raise their placards, only the placards need to move, not the figure itself, so there should be no changes made to the actual figures when they raise the placards. Attached to this prompt are style.css and style (1).css. style.css is the new style sheet you made with the issues, and style (1).css is the old one that did not have the issues.
+
+Response:
+Diagnosis confirmed by diffing the two files:
+
+1. **Figures changed** — v4 added tiny eye dots (`::before/::after` on `.delegate-head`), a shirt-collar (`.delegate-body::after`), personality-colored bodies (red/green/blue/brown), and different proportions (32×20 vs 46×22 shoulders, 22px vs 24px head with inset shadow). All of that needs to revert.
+2. **Placards ellipsize** — v4 switched from `Playfair Display 0.68rem` to `Special Elite 0.7rem + letter-spacing 0.04em`. Special Elite is a much wider monospace font, so "Philippines" no longer fits in the 90px placard.
+3. **Speech bubble overflow** — v4 imposed `max-width: 260px` on the bubble, but also changed the transform/positioning in a way that lets long lines visually push past the bubble's right edge. v3 had no max-width and let the bubble grow naturally (the Power-Del edge-seat rule prevented off-screen clipping).
+
+Also confirmed: the placard-raise rules (`.delegate-seat.raised .placard`) only transform the placard, not the figure — so no changes are needed for "only placards move." I'll keep that class structure intact so `game.js` still works.
+
+Fix: revert the figure, placard, and speech-bubble sections to v3 style while keeping all Phase 2 additions (agenda notepad, motions dais bar, voting animations, requesting badges). Writing the corrected stylesheet now.Found it — the speech-bubble bug is actually a CSS contradiction: v4 set `white-space: nowrap` AND `max-width: 260px`. `nowrap` disables wrapping entirely, so the `max-width` has no effect and long lines overflow. That plus the figure/placard regressions gives me a clear fix list. Building the corrected stylesheet by patching the current file:
+# Diagnosis & Fix
+
+I compared the two files carefully. Three specific regressions were introduced in v4/v5:
+
+**1. Figure changes** — v5 added skin/collar tinting to `.delegate-head` and `.delegate-body`, plus per-personality color variants (`.delegate-figure.power`, etc.). Reverted to v3's plain figures: neutral skin head, dark navy body, no personality tinting, no eyes/collar.
+
+**2. Placard ellipsizing "Philippines"** — v5 added `max-width: 90px` + `text-overflow: ellipsis` to `.placard`. Removed both. The placard now uses `white-space: nowrap` only, so it grows to fit any country name (Philippines, South Africa, Indonesia all display in full).
+
+**3. Speech bubble overflow** — v5 had a `max-width` constraint plus `word-wrap: break-word` that combined weirdly with `white-space: nowrap`, causing text to spill right. Reverted to v3 behavior: bubble grows horizontally to fit the full sentence. Since Power-Dels are now barred from edge seats (seats 0 and 7), their long "The delegation of…" line stays inside the room bounds.
+
+**4. Bonus fix — placard raise animation** — Per your note, I also stripped any figure-affecting transforms out of the `.raised` and `.vote-favor` / `.vote-oppose` states. Only the `.placard` element inside those seats now translates upward. The head and shoulders stay perfectly still.
+
+Only `style.css` was updated — `index.html` and `game.js` are unchanged. Paste this new stylesheet, reload, and the room should look exactly like v3 again with all Phase 2 functionality intact.
+
+[07/12/2026 19:33:35 +00:00] Seifer, Evan:
+Can you keep it so that placards are by default underneath the figures of the delegates, but when they are raised, the placards are above them? Also you can enable text wrapping for the speech bubbles when they get long enough to touch the delegate next to them. Also make all speech bubbles be on the top layer, visible over everything else on the screen
+
+Response:
+
+# Version 6 stylesheet: three targeted fixes
+
+Only `style.css` changed — leave `index.html` and `game.js` as-is.
+
+**1. Placards behind figures by default, above when raised**
+- Default `.placard` now has `z-index: 1` (sits behind the figure's `z-index: 2` head/shoulders — the placard peeks up from the table behind the delegate).
+- `.delegate-seat.raised .placard` and `.raised-voting .placard` bump to `z-index: 5`, so the moment a placard lifts it pops in front of the figure. The z-index transition is timed to snap forward instantly on raise, and delay slightly on lower — so the placard never awkwardly clips through the figure mid-animation.
+
+**2. Speech bubble wrapping**
+- Removed `white-space: nowrap`, added `white-space: normal` + `word-wrap: break-word` + `max-width: 240px`. Bubbles now grow to fit short lines and wrap to a second/third line for long Power-Del sentences, so they never intrude on neighbors.
+
+**3. Bubbles always on top**
+- Bubble `z-index` raised to `9999`.
+- Added `.delegate-seat:has(.speech-bubble) { z-index: 500 !important; }` — any seat currently showing a bubble is promoted above all other seats, guaranteeing the bubble floats over every neighbor.
+- Changed `.committee-room` from `overflow: hidden` to `overflow: visible` so a tall wrapped bubble never gets clipped by the room's top edge.
+
+Reload and the bubble/placard behavior should feel correct. Ready for your next batch of Phase 2 notes when you are.
+
+[07/12/2026 19:43:01 +00:00] Seifer, Evan:
+What I meant by the placard positions was for the placard to be positioned below the delegate so it looks like the delegate is directly above the placard on a 2D plane, not stacked with a z axis. And raised placards should be positioned in the same way above the delegates' head. The text bubble should be above the raised placard so you can see the text, the placard, and the delegate.
+
+Response:
+Understood — you want **spatial** positioning (2D vertical stacking), not z-layering. Making three edits to `style.css`:
+
+1. Placard default stays where it is (already spatially below the figure via `margin-top`).
+2. Raised placard now translates up by **~55px** so it clears the delegate's head entirely and sits above it in real 2D space.
+3. Speech bubble gets an extra upward push when the seat is raised, so it always floats above the (now-raised) placard.
+
+Also removing the z-index toggling since we're going purely spatial now.
+# Version 7 stylesheet: proper 2D spatial stacking
+
+Fixed the mental model. The placard is no longer a z-index sibling of the figure — it's positioned **below the figure in vertical (Y-axis) space** by default, and **above the figure in vertical space** when raised. Pure 2D positioning, no z-axis tricks.
+
+**How it works now:**
+
+- **Default state:** The placard sits below the figure via normal block flow with `margin-top: 4px`. Visually: `[head] [shoulders] [placard]`, top to bottom.
+- **Raised state:** The placard translates upward by `-74px` — enough to clear the entire figure (head + shoulders ≈ 46px, plus its own height ≈ 20px, plus gap). It now visually sits *above* the delegate's head. Order becomes: `[placard raised] [head] [shoulders]`.
+- **Speech bubble stacking:** By default the bubble floats above the seat. When the seat is raised, the bubble is pushed an additional 70px higher (`translate(-50%, -78px)`) so it always sits *above* the raised placard. Final visible order when raised: `[bubble] → [raised placard] → [head] → [shoulders]`.
+
+The bubble still has `z-index: 9999` and its parent seat gets promoted to `z-index: 500` when a bubble is showing, so bubbles remain on top over all other elements when their text wraps to multiple lines.
+
+Only `style.css` changed. Reload and check the vertical stacking behavior — placard should peek out from behind the delegate at rest, then leapfrog up over the head when raised, with the bubble sitting above it.
+
+[07/12/2026 19:48:39 +00:00] Seifer, Evan:
+Delegates with small names like Chile or Peru have their placards on their right side instead of underneath. Please fix that. Also, after finishing speaking or being called on, delegates should always put their placards down.
+
+Response:
+Two clear diagnoses:
+
+**Issue 1 (placards on the right for short names):** The `.placard` is `display: inline-block` and the `.delegate-figure` is a block element, so normally they stack. But short names like "Chile"/"Peru" produce a placard narrow enough that when combined with `text-align: center` and the seat's whitespace flow, it renders inline next to the figure instead of below. Fix: force `.placard` to `display: block` with `width: fit-content` and `margin: auto`, guaranteeing it always sits on its own line beneath the figure regardless of name length.
+
+**Issue 2 (placards should lower after speaking):** This one requires a `game.js` change — right now the code adds the `raised`/`raised-voting` class and leaves it. We need to remove that class shortly after the delegate finishes speaking (both in Roll Call and Phase 2 motions), while keeping the voting-tally placard raises persistent until the tally clears.
+
+**One quick ask before I produce updated files:** could you paste the current contents of `style.css` and `game.js`? The versions I have on my side are truncated in the artifact snapshot, so writing full new versions without seeing the exact current state risks reverting something you liked. Once you paste them, I'll:
+
+1. Fix `.placard` positioning (short-name bug) in `style.css`.
+2. Add a `lowerPlacard(delegate)` helper in `game.js` and call it:
+   - In Roll Call, ~800ms after marking a delegate Present/P&V (so you see the acknowledgment raise, then it settles back down).
+   - In Phase 2, when a requesting delegate is recognized and their motion is noted.
+   - Keep voting-tally raises persistent (they clear when you move to the next motion or finish the vote).
+
+Paste the two files and I'll ship the update in the next message.
+
+[07/12/2026 19:51:38 +00:00] Seifer, Evan:
+[Vision Image(s)]
+
+
+Response:
+Both fixes are in. Diagnoses & solutions applied to your files:
+I have a full picture of the current code now. Making surgical changes to `game.js`:
+
+1. **Roll Call:** raise placard when the delegate starts speaking (bubble appears), lower it after they're marked and the bubble clears.
+2. **Phase 2 start:** no longer carries over raised placards from roll call (fresh slate — delegates start with placards down).
+3. **Phase 2 requesting:** delegates with the gold `!` badge now also have their placards visibly raised (they're literally raising their placards to be recognized).
+4. **Phase 2 recognize:** when clicked, keep placard up while they speak. When you note the motion, placard goes down.
+5. **Unrecognized requesting delegates:** keep placards up until voting phase begins.
+# Version 8: Short-Name Fix + Placards Auto-Lower
+
+Both fixes are in. Paste the updated `style.css` and `game.js`; `index.html` is unchanged.
+
+**1. Placards always centered below the figure**
+The bug was `display: inline-block` — for narrow placards ("Chile", "Peru") the browser fit them inline next to the figure on the same baseline. Fixed with `display: block; width: fit-content; margin: 4px auto 0;` — the placard now unconditionally occupies its own line, centered under the figure, regardless of name length.
+
+**2. Placards lower after speaking**
+
+Roll call:
+- When a present delegate is called, their placard **raises** the moment they respond (white for Present-expected personalities, cream/gold for P&V-expected).
+- After you mark them, their bubble clears and the placard **lowers** back to the resting position.
+- If you trigger the "Delegations must be…" correction, the placard briefly lowers, the delegate re-speaks, the placard raises again for the corrected response, then lowers when you mark them.
+
+Phase 2:
+- Roll call carries over only **absence** state — no raised placards leak into Phase 2. Everyone starts with placards down.
+- When you ask for motions, the 5 requesting delegates **raise placards** (with the gold "!" badge).
+- Clicking one keeps their placard up while they speak.
+- After you note the motion, their placard **lowers**.
+- If a proposer is ruled dilatory and gets a second chance, their placard stays up through both speeches and lowers after the mod/RR is finally noted.
+- When you click "Move to vote," any lingering raised (unrecognized) placards drop.
+- During voting, favor/oppose placard raises work as before and clear between rounds.
+
+Reload and both issues should be resolved.
+
+[07/12/2026 20:08:29 +00:00] Seifer, Evan:
+The speech bubbles are now too high and stick off the edge of the page. try putting them below the bottom of the delegate pointing up like where the placard usually is. When the placard goes up, it leaves room at the bottom for the speech bubble. Also, remove the ! indicators. The placard going up is attention enough
+
+Response:
+# Version 9 stylesheet: bubbles below, badges removed
+
+Two changes to `style.css` only:
+
+**1. Speech bubbles now sit below the delegate, pointing up.** They anchor to the bottom of the seat area — right where the placard normally lives. When the placard raises up above the head, it vacates that space and the bubble slides in below with an upward-pointing tail. When the placard is down, the bubble still appears there (overlapping slightly is fine since bubbles only appear during roll call responses when the placard is raised anyway). No more clipping off the top of the room.
+
+**2. `!` badges removed.** The `.delegate-seat.requesting::after` block is gone. The raised placard is the sole "please recognize me" signal. Hover state on requesting delegates is preserved (cursor + glow) so they still feel clickable.
+# Version 9 stylesheet: bubbles below, ! badge removed
+
+Only `style.css` changed.
+
+**Speech bubble now sits below the delegate,** positioned via `top: 100%` with the tail pointing up. At rest this is where the placard lives — but since delegates only speak when their placard has raised up above their head, that space is now free for the bubble. Order top-to-bottom when speaking: `[raised placard] → [head] → [shoulders] → [speech bubble ↑]`. Bubbles stay on top layer (`z-index: 9999`) and their parent seat is auto-promoted so they float over neighbors.
+
+**! badge removed** from requesting delegates. The raised placard is now the sole visual cue that a delegate wants to be recognized. Hovering over a requesting delegate still applies the gold glow + slight scale-up so clickability remains obvious.
+
+[07/12/2026 20:15:05 +00:00] Seifer, Evan:
+You also got rid of the body of the delegates: that is an error. Put the body back and have the placard exist below the body. Also, when a delegate says "here" the bar at the bottom splits the response button and the progress bar into two lines. Correct that so they stay on one line
+
+Response:
+Two targeted fixes needed. Before I ship them blind, I want to be precise about the body issue — could you confirm which of these you're seeing:
+
+**A)** The head is there, but the shoulders/body block below it is completely gone (just a floating head above the placard).
+**B)** The shoulders are visible but the speech bubble is overlapping/covering them.
+**C)** The whole figure looks flatter/smaller than before.
+
+My best guess is **B** — in v9 I moved the bubble to `top: 100%` of the seat, which places it right where the shoulders + resting placard live, so during a response the bubble visually blankets the body. If that's it, the fix is to anchor the bubble to `top: calc(100% + 8px)` *and* have the resting placard remain visible below the bubble — or better, temporarily hide the resting placard while the delegate is speaking (since their placard is raised above their head anyway during speech).
+
+**For the dais bar wrapping issue** — that one I can fix confidently right now. The correction button's long italic text ("Delegations must be either present or present and voting.") is wider than the space between the calling info and the progress bar, so flex-wrap kicks in and pushes it to a second line. Fix: give `.correction-row` `flex: 1 1 auto` with `min-width: 0` and `white-space: nowrap` + a slightly smaller font-size so it fits on one line between the calling label and the progress meter. If your window is narrow it will still wrap gracefully, but at normal widths it'll stay on one line.
+
+Confirm which body issue you're seeing (A/B/C) and I'll ship both fixes together as a v10 stylesheet.
+
+[07/12/2026 20:17:24 +00:00] Seifer, Evan:
+It is issue A
+
+Response:
+Got it. The shoulders/body element is missing entirely — likely because when I rewrote the bubble positioning in v9, I removed or emptied the `.delegate-shoulders` rule by accident.
+
+Rather than rewriting the whole stylesheet from memory and risking another regression, here's a small **append-to-the-end** patch. Paste this block at the very bottom of your `style.css` (below everything else) and save. CSS cascade means these rules will win over anything broken above.
+# v10 patch — two targeted fixes
+
+Rather than regenerate the full stylesheet, this is a small **append-to-the-end** patch. Open `style.css`, scroll to the very bottom, and paste the whole patch block after the last existing rule. CSS cascade means these rules override the broken ones without me touching anything else.
+
+**Fix 1 — Delegate body restored.** Re-declares `.delegate-shoulders` with the v3 dimensions and Carolina-blue-dark fill (`46×22px`, rounded top corners, dark navy body, thin ink border). Also re-asserts `.delegate-figure` as a vertical flex column so the head, shoulders, and placard always stack head→body→placard.
+
+**Fix 2 — Dais bar stays on one line.** Forces `.dais-bar` to `flex-wrap: nowrap`, gives `.correction-row` `flex: 1 1 auto` with `min-width: 0` so it can shrink between the "calling" label on the left and the progress meter on the right, and constrains the button's italic text with `white-space: nowrap` + slightly smaller font (`0.82rem`) so the sentence fits without wrapping. The progress meter is pinned with `flex: 0 0 auto` so it never gets crowded out.
+
+Reload after pasting — bodies should reappear and the "here" correction button should sit inline with the progress bar.
+
+[07/12/2026 20:19:12 +00:00] Seifer, Evan:
+[Vision Image(s)]
+Can you just add it to the end of this so I can keep everything in one place
+
+Response:
+ [style.css](/generatedImages/eec54686-1e90-6217-d952-ddd2ca2e3684/f2c80dac-10b6-43af-b201-e1a42378da41/644981c5-2564-194e-9d38-6fd7a6b235e2/style.css "style.css") 
+
+ Done — `style.css` now contains everything from your uploaded file plus the v10 patch appended at the bottom. Replace your existing file with this one and reload.
+
+[07/12/2026 20:21:57 +00:00] Seifer, Evan:
+That fixed neither issue
+
+Response:
+Found the actual root causes — my earlier patch was targeting the wrong things.
+
+**Body issue:** `game.js` renders `<div class="delegate-body">` but the CSS only defines `.delegate-shoulders`. **Class name mismatch** — the styling never applied. My previous patch also styled `.delegate-shoulders`, so it did nothing.
+
+**Dais bar issue:** `.dais-bar` uses `display: grid` (not flex) with three columns. `.correction-row` has `grid-column: 1 / -1`, which forces it to span the full width on a new grid row — hence the two-line layout. My `flex-wrap: nowrap` did nothing because it's not a flex container.
+
+Rewriting the patch to fix the actual problems:
+
+ [style.css](/generatedImages/eec54686-1e90-6217-d952-ddd2ca2e3684/d33b0be4-9c2e-4793-8a3c-086a37010ee2/c6b9b589-079c-cc49-adbe-53aea176ee57/style.css "style.css") 
+
+ Both real root causes fixed in the attached `style.css`:
+
+**Fix 1 — Body actually renders.** Your `game.js` renders `<div class="delegate-body">`, but every CSS version had been styling `.delegate-shoulders`. The class names never matched, so the body element was always an unstyled empty div (invisible). New `.delegate-body` rule matches what JS actually renders.
+
+**Fix 2 — Dais bar stays on one line.** `.dais-bar` is a CSS **grid** (`grid-template-columns: 1fr auto 1fr`), not flex. `.correction-row` had `grid-column: 1 / -1`, which explicitly told it to span the full width on a new row. My previous `flex-wrap` patch was meaningless in a grid context. Now `.correction-row` is placed in `grid-column: 2, grid-row: 1` — the same cell as the action buttons — so the correction button appears inline between the "calling" info on the left and the progress bar on the right.
+
+Replace your `style.css` with the attached file and reload. Both issues should now genuinely resolve.
+
+[07/12/2026 20:26:49 +00:00] Seifer, Evan:
+Please move the speech bubbles slightly higher and make it so that when it is an absent delegate's turn for rollcall, their absent seat also glows like the others
+
+Response:
+ [style.css](/generatedImages/eec54686-1e90-6217-d952-ddd2ca2e3684/06f3912d-f56c-4d99-9a27-fedbf88b2ab5/7e11410c-300c-9649-a6f2-38f427506e45/style.css "style.css") 
+
+ Both tweaks appended to `style.css`:
+
+**1. Bubbles lifted.** Added `transform: translate(-50%, -12px)` to `.speech-bubble` — nudges every bubble 12px higher above its anchor. The upward-pointing tail still connects cleanly to the delegate.
+
+**2. Absent seats glow when active.** The existing rules dim absent/empty seats with `opacity: 0.35` and `grayscale(0.8)`, which was overriding the active-seat glow. New rule: when an absent or empty-chair seat *is* the active one being called, opacity resets to `1` and the gold drop-shadow applies — so an absent delegate's turn now looks visually equivalent to a present delegate's turn (you have to notice the silence, not the dimness).
+
+Replace your `style.css` with the attached file and reload.
+
+[07/12/2026 20:28:39 +00:00] Seifer, Evan:
+[Vision Image(s)]
+Edit this version of the style guide but just add the "Absent seats glow when active."
+
+Response:
+ [style.css](/generatedImages/eec54686-1e90-6217-d952-ddd2ca2e3684/da109fae-4c1f-4f0a-a42c-4e50dc2e563b/22bc5431-0360-644e-802b-755551db5c0c/style.css "style.css") 
+
+ [style.css](/api/generatedFiles/style.css "style.css")
+
+Done — appended only the absent-seat active-glow rule to your uploaded `style.css`. When an absent/empty-chair seat becomes the currently-called one, opacity resets to `1` and the same gold drop-shadow the other active seats get is applied. No other changes.
+
+[07/12/2026 20:41:11 +00:00] Seifer, Evan:
+In phase 2, when delegates propose a mod with "# 45 [topic]", if the # is not a multiple of 3, then the player must say "Mods with 45 second speaking times must have multiples of 3 for the minutes." and have the delegate repropose the same motion but with the # rounded down to the closest multiple of 3. Mod motions work by taking the first number as the number of minutes total for the topic and the second number is the number of seconds each speaker has to speak. For example, a 2 30 means 4 speakers and a 6 45 means 9 speakers. Make sure that no mods proposed exceeds the number of delegates in the room. For round robins, the number is the number of seconds given to each person and everyone gets to speak, so the number should be 15 seconds or 30 seconds.
+
+Response:
+Before I write this, I need to see the current `game.js` — the last version I have visible is v6, but you've iterated since. Blind edits to motion generation and adding a second correction-flow risk breaking the dilatory flow or the placard-lower timing.
+
+Could you paste or upload your current `game.js`? Once I have it I'll implement:
+
+**Design plan for this update:**
+
+1. **Mod pool constrained by speaker count.** Speakers = `(minutes × 60) / seconds`. I'll only generate mods where speakers ≤ present delegates in the room (max 8, or 7 if a Slacker is absent). Existing pool has `5 30` (10 speakers) and `10 30` (20 speakers) — both invalid. I'll replace with a valid pool.
+
+2. **45-second mod correction flow.** When a delegate proposes an `X 45` mod where `X` is not a multiple of 3:
+   - New dais button appears: *"Mods with 45 second speaking times must have multiples of 3 for the minutes."*
+   - Clicking it makes the same delegate re-propose with `X` rounded down to the nearest multiple of 3 (e.g. `4 45` → `3 45`, `7 45` → `6 45`, `8 45` → `6 45`).
+   - Placard stays raised across both speeches (same pattern as dilatory).
+   - Rounded value must still respect speaker count — I'll pre-filter the generation pool so the rounded-down version is always valid.
+
+3. **Round robin constraint.** RR seconds pool restricted to `[15, 30]` only. Current code likely generates arbitrary values — I'll lock it to these two.
+
+4. **Notation stays the same.** Notepad still writes `Fra 3 45 Funding`, `Bra 30 sec rr Blocs`, etc. — only the underlying values change.
+
+5. **Sample post-fix mod pool:**
+   - Valid without correction: `2 30`, `3 30`, `4 30`, `3 45`, `6 45`, `2 60`, `4 60`, `6 60`, `8 60`
+   - Trigger correction (rounds to valid): `4 45`, `5 45`, `7 45`, `8 45`
+
+Paste the current `game.js` and I'll ship the patched version.
+
+[07/12/2026 20:43:59 +00:00] Seifer, Evan:
+[Vision Image(s)]
+
+
+Response:
+Got it — I have the full picture now. Here's what I'm changing in `game.js`:
+
+1. **Mod pool rebuilt** with proper speaker math and filtered by present count.
+2. **New correction flow** for `X 45` mods where X isn't a multiple of 3 — mirrors the dilatory pattern.
+3. **Round robins** locked to 15 or 30 seconds.
+4. **Second-chance motions** (after dilatory OR mod correction) reuse the same "speaking2" stage.
+
+ [game.js](/generatedImages/eec54686-1e90-6217-d952-ddd2ca2e3684/3de4f8ab-0907-460b-b0e8-8d81fdcd49cf/cc11b0de-6f76-c648-ab66-348ae4f4417d/game.js "game.js") 
+
+ [game.js](/api/generatedFiles/game.js "game.js")
+
+# Motion validation logic added
+
+Only `game.js` changed. Here's what's in the new version:
+
+**Mod pool rebuilt with real math.** Speakers = `(min × 60) / sec`. All mods filtered so speaker count ≤ present delegates in the room.
+
+**Valid mods (no correction):** 2·30, 3·30, 3·45, 4·60, 5·60, 6·60, 7·60, and 6·45 (only pickable when 8 present).
+
+**Correction-triggering mods (~35% chance for Power-Del / Dem-Boy):** 4·45, 5·45, 7·45, 8·45 — any `X 45` where X isn't a multiple of 3. When one of these is proposed:
+- The dais bar shows the gold button: **"Mods with 45 second speaking times must have multiples of 3 for the minutes."**
+- Clicking it makes the same delegate re-propose the **same mod** with minutes rounded **down** to the nearest multiple of 3: `4 45 → 3 45`, `5 45 → 3 45`, `7 45 → 6 45`, `8 45 → 6 45`.
+- Placard stays raised through both speeches (same pattern as the dilatory flow).
+- The rounded version is guaranteed to also fit the room (e.g., `7 45`/`8 45` only spawn when 8 delegates are present, since they round to 6·45 = 8 speakers).
+
+**Round robins locked to 15 or 30 seconds.** CarolinaMUN-Style delegates now randomly propose either `15 second round robin on [topic]` or `30 second round robin on [topic]`. Notepad shorthand adapts: `Bra 15 sec rr Blocs` or `Bra 30 sec rr Blocs`.
+
+**Unmods unchanged** — Slackers still propose 5/7/10-minute unmods and still trigger the existing dilatory flow.
+
+Second-chance motions (after either dilatory or mod-correction) also route through the validated pools, so no illegal motion can slip through on a re-proposal.
+
+[07/12/2026 20:53:42 +00:00] Seifer, Evan:
+Great. Now make it so delegates do not propose mods with 60 second speaking times. That is unrealistic. Also, when voting on motions, delegates who voted in favor of a motion should not be voting against the same motion
+
+Response:
+ [game.js](/generatedImages/eec54686-1e90-6217-d952-ddd2ca2e3684/e73f8d86-3ea0-46ae-bfb3-72c72de73147/ce79e03e-35e5-844a-b10d-881a934bfcb2/game.js "game.js") 
+
+ [game.js](/api/generatedFiles/game.js "game.js")
+
+Two surgical changes to `game.js`:
+
+**1. 60-second mods removed.** The `VALID_MODS` pool is now:
+- `2 30` (4 speakers)
+- `3 30` (6 speakers)
+- `3 45` (4 speakers)
+- `6 45` (8 speakers — only picked when 8 present)
+
+Plus the four correction-triggering `X 45` mods, which round down to `3 45` or `6 45`. Delegates will never propose 60-second speaking times again.
+
+**2. Favor voters no longer double-vote against.** Root cause: the `.vote-favor` CSS class stayed on those delegates through the "all opposed" call, so their placards remained raised alongside the new oppose voters — visually reading as "they voted both for and against."
+
+Fix:
+- `favorSet` is now saved to `p2.favorIdxs` when the favor vote resolves.
+- When `handleCallOppose()` runs, it first **removes the `.vote-favor` class from all seats** (dropping those placards back down), then computes oppose voters from the stored `favorIdxs` list. Now only the opposing delegates have placards up during the "all opposed" call.
+
+Replace your `game.js` with the attached file.
+
+[07/12/2026 21:16:28 +00:00] Seifer, Evan:
+For delegates with names that are 7 letters or shorter, there is no need to shorten them in the agenda when written down. Also, remove the periods from the end of when delegates propose motions. Finally, match the style of the buttons that indicate the player speaking in phase 2 to the same style that the rollcall correction button is in phase 1
+
+Response:
+ [game.js](/generatedImages/eec54686-1e90-6217-d952-ddd2ca2e3684/7888fdf9-3ee0-411f-99e5-0786c8e4bc05/4268daf3-1fad-a04d-aa61-04116ee9c8b5/game.js "game.js") 
+
+ 
+
+ [style.css](/generatedImages/eec54686-1e90-6217-d952-ddd2ca2e3684/7888fdf9-3ee0-411f-99e5-0786c8e4bc05/4a5e270a-71dd-304d-8b53-6efb4f149409/style.css "style.css") 
+
+ Both files updated. Three changes plus a bug I caught along the way:
+
+**1. Short names in the agenda.** `shortName()` now returns the full country name when it's 7 letters or fewer. So "Chile," "Peru," "France," "Kenya," "Brazil," "Mexico," "Canada," "Norway," "Poland," "Turkey," "Sweden," "Ghana" all appear in full in the notepad (e.g., `Chile 2 30 Funding`). Longer names still shorten: `Phi 30 sec rr Blocs` for Philippines, `Ind 3 45 Timeline` for Indonesia, etc. Added "Philippines" → "Phil" for a slightly nicer shorthand.
+
+**2. No trailing periods on motions.** Delegates now say *"2 30 on funding mechanisms"*, *"30 second round robin on bloc positions"*, *"7 minute unmod"* — no period. Cleaner speech bubbles.
+
+**3. Phase 2 speaking buttons restyled to match Phase 1's correction button.** All "you the chair are speaking" buttons — the opening *"Are there any points or motions on the floor?"*, the dilatory ruling, the 45-second-mod correction, and the *"All those in favor / opposed…"* voting calls — now use the same **gold cream background, gold border, italic Lora font, ink text** as the roll-call correction button. Navigation buttons (*"Note motion & recognize next →"*, *"Move to vote →"*, *"Proceed →"*) stay in Carolina blue so player-action reads visually distinct from player-speech.
+
+**Bonus bug fix caught during this pass:** `game.js` was creating these buttons with class `dais-prompt-btn`, but `style.css` defined `.chair-prompt-btn` — the classes never matched, so the Phase 2 buttons had been rendering with default browser styling this whole time. That mismatch is now fixed, which means the restyling above will actually take effect on your screen (previously you would've only seen a subtle change).
+
+Replace both `game.js` and `style.css` with the attached files and reload.
+
+[07/12/2026 21:36:24 +00:00] Seifer, Evan:
+Now I want the order of disruptiveness to factor into the accuracy score for this section. For the motions provided, most disruptive is always the unmoderated caucus regardless of size, then round robins are more disruptive than mods (the more seconds there are, the more disruptive a round robin is), and mods are the least disruptive. Mods with more speakers are more disruptive. For example, a 3 30 is more disruptive than a 3 45 because 6 speakers is more than 4. When mods have the same number of speakers, the first one proposed is voted on first
+
+Response:
+Before I code this, let me confirm the design so we're aligned — and I'll need you to paste/upload the current `game.js` since I don't want to guess at the exact current state after all our recent iterations.
+
+**Disruptiveness ranking (highest → lowest):**
+
+1. **Unmods** — always most disruptive, regardless of length. (Note: with the dilatory ruling forced, unmods should never actually make it into the agenda, but I'll keep the rank in case we later add difficulty modes where dilatory is optional.)
+2. **Round robins** — ranked by seconds: `30 sec rr` > `15 sec rr`.
+3. **Mods** — ranked by speaker count: more speakers = more disruptive. Ties broken by earlier proposal order.
+   - `3 30` (6 speakers) > `6 45` (8 speakers)? No wait — 8 > 6, so `6 45` > `3 30`.
+   - Full mod ranking with current pool: `6 45` (8) > `3 30` (6) > `2 30` (4) = `3 45` (4), tie broken by proposal order.
+
+**Scoring plan:**
+
+- When each motion is captured, compute a `disruptiveness` score and store it on the motion object.
+- When the player clicks a motion to vote on, compare it to the **most disruptive remaining unresolved motion**.
+- If they picked the correct one → +1 correct pick. If not → +1 incorrect pick.
+- At the end of Phase 2, show a debrief screen (matching Phase 1's transition screen) with:
+  - **Order Accuracy** — X of 3 votes called in the correct order.
+  - **Procedural Accuracy** — did they correctly rule dilatory / correct 45-sec mods when required? (These already happen but aren't scored yet.)
+  - Combined **Motions Score**.
+
+**One question:** if the first vote fails, and the second-most-disruptive motion is now technically "the most disruptive remaining" — should picking it count as correct on attempt 2, or should the player be graded against the *original* ranking? I'd argue **against the remaining ranking** (a real chair reassesses after a failed vote), but let me know your preference.
+
+Paste/upload current `game.js` and confirm the "remaining ranking" question, and I'll ship it.
+
+[07/12/2026 21:50:10 +00:00] Seifer, Evan:
+[Vision Image(s)]
+You are correct. After a motion fails, it is eliminated from the pool and the order of disruptiveness is maintained for future picks.
+
+Response:
+ [game.js](/generatedImages/eec54686-1e90-6217-d952-ddd2ca2e3684/bcfa2f0e-5cac-4eaf-8623-79f9b974eb59/d6ac17aa-b302-4d49-bc6a-05f75d742fc1/game.js "game.js") 
+
+ # Disruptiveness scoring added
+
+Only `game.js` changed.
+
+**Ranking rule implemented:**
+1. **Unmods** — top tier (all unmods rank equally; if two ever coexist, earlier proposal wins).
+2. **Round robins** — second tier, more seconds = more disruptive (`30 sec rr` > `15 sec rr`).
+3. **Mods** — bottom tier, more speakers = more disruptive. Ties (e.g. `2 30` and `3 45`, both 4 speakers) broken by **earlier proposal order**.
+
+**How it scores:**
+- Each captured motion now stores its `proposalOrder`.
+- When you click a motion to vote, the game computes the most-disruptive-unresolved motion at that moment and compares it to your pick.
+- After a motion **fails**, it's marked `status: "failed"` and excluded from future "most disruptive remaining" checks — so the ranking of the *remaining* pool is what you're graded against on subsequent picks (matches the design you confirmed).
+
+**Debrief on the post-motions screen** now shows:
+- **Order Accuracy: N / total (percentage)**
+- A line-by-line breakdown for each vote: green check with the motion you picked if correct; red X showing what you picked *and* what you should have picked if wrong.
+
+The breakdown will render as plain lines for now — I didn't add new CSS for `.pick-line.ok` / `.pick-line.miss` / `.pick-breakdown`. If you want the ✓ lines styled green and ✗ lines styled red like Phase 1's score card, say the word and I'll add ~6 lines of CSS.
+
+[07/12/2026 21:57:30 +00:00] Seifer, Evan:
+Can you add a "Disruptiveness Key" at the bottom of the agenda to show new players how to calculate disruptiveness. Before adding anything show me a mock up of how you would format it so it is easy to understand, emphasizing visual learning over words, and fast to look through
+
+Response:
+Here's my proposed mockup. The goal is that a new player can glance at it during a live round and instantly rank any motion without reading — pure vertical hierarchy, color-coded, icon-driven.
+
+```
+┌─────────────────────────────────┐
+│  DISRUPTIVENESS KEY        ▲    │
+│                          more   │
+│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━   │
+│                                 │
+│   🔴  UNMOD          any time   │
+│                                 │
+│   🟠  RR 30 sec                 │
+│   🟡  RR 15 sec                 │
+│                                 │
+│   🔵  MOD  ← more speakers      │
+│            = more disruptive    │
+│                                 │
+│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━   │
+│                          less   │
+│                            ▼    │
+│  tie? → earlier proposal wins   │
+└─────────────────────────────────┘
+```
+
+**Design rationale:**
+
+- **Vertical = ranking.** Top of the key = most disruptive. The little `▲ more` / `▼ less` arrows on the right edge reinforce this at a glance.
+- **Color-coded dots** (red → orange → yellow → blue) create an instant heat scale. Red = "burn the room down," blue = "calm procedure." No reading required to see hierarchy.
+- **Motion type in bold caps** (`UNMOD`, `RR`, `MOD`) so your eye lands on the category first.
+- **Sub-rule inline, small text.** For RRs the seconds are already shown as two separate rows. For MODs, one arrow-line teaches the "more speakers = more disruptive" rule without cluttering the visual with every combination.
+- **Tiebreaker as a single footer line** — small, italic, out of the main scan path.
+- **Fits under the agenda in the same notepad panel**, matching the existing paper/tape aesthetic (cream background, dashed rule, Special Elite header font).
+
+**What I'd render in actual CSS:** carolina blue header text, Special Elite font for "DISRUPTIVENESS KEY", each row as a flex line with a colored circle (12px) + label (Lora 0.8rem) + tiny gray helper text right-aligned. Total height ≈ 140-160px so it fits comfortably below the agenda without pushing the notepad off-screen.
+
+**Two things to decide before I build it:**
+
+1. **Emoji dots vs. CSS colored circles?** Emoji render inconsistently across OSes (Windows and Mac render 🔴 quite differently). I'd recommend CSS circles for a cleaner, more controlled look. Your call.
+2. **Should the key be collapsible?** A small `[hide]` toggle at the top could let experienced players tuck it away. Or leave it always-on for training-wheel consistency. I'd lean always-on for now — you can add a toggle later if it feels crowded.
+
+Give me a thumbs up (or edits) and I'll add it to the agenda panel.
+
+[07/12/2026 22:04:54 +00:00] Seifer, Evan:
+Combine the two round robin points to be one and emphasize that for rr and unmods, the longer speaking time is the most disruptive. For mods, tell them how to calculate how many speakers there are and then how to figure out which is more disruptive. Also, add Adjourn/Suspend Debate as the most disruptive of them all and Speaker's List as the least disruptive.
+
+Response:
+Here's the revised mockup:
+
+```
+┌───────────────────────────────────────┐
+│  DISRUPTIVENESS KEY              ▲    │
+│                                more   │
+│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━   │
+│                                       │
+│  ⬛  ADJOURN / SUSPEND                 │
+│                                       │
+│  🟥  UNMOD          longer = more ↑   │
+│                                       │
+│  🟧  ROUND ROBIN    longer = more ↑   │
+│                                       │
+│  🟦  MOD            speakers = min×60 │
+│                                 ─────  │
+│                                  sec   │
+│                     more speakers ↑    │
+│                                       │
+│  ⬜  SPEAKER'S LIST                    │
+│                                       │
+│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━   │
+│                                less   │
+│                                  ▼    │
+│  tie? → earlier proposal wins         │
+└───────────────────────────────────────┘
+```
+
+**Changes from the previous version:**
+
+- **Adjourn/Suspend Debate** added at the top as a solid dark square (highest tier — ends debate entirely). Uses a filled block to signal "hard stop."
+- **Speaker's List** added at the bottom as an outlined/empty square (lowest tier — pure procedural default). Empty block signals "baseline / no disruption."
+- **Round Robin** collapsed to a single row with a right-aligned helper: *"longer = more ↑"*. Same treatment applied to **Unmod** so the two rows read as a matched pair.
+- **Mod** row now teaches the speaker-count formula inline: shows `speakers = min×60 / sec` as a small fraction-style hint, plus *"more speakers ↑"* below it.
+- Color scale flows: **black → red → orange → blue → white** (hot to cold, filled to empty). This reinforces the hierarchy without depending on reading.
+
+**Rendering plan when you approve:**
+
+- Filled dark square for Adjourn (Carolina blue dark or near-black), outlined square for Speaker's List — matches your paper/ink aesthetic without breaking the color scale.
+- Mini "×60 / sec" formula rendered as a small typographic fraction using CSS (superscript min·60 over subscript sec) so it visually reads as division, not text.
+- Total panel height ≈ 200px — still fits comfortably under the agenda in the same notepad.
+- CSS circles/squares (no emoji) for cross-platform consistency.
+
+Confirm and I'll build it. Only question: **do you want the formula `speakers = (min × 60) / sec` displayed as a real typographic fraction (nicer, slightly more space), or as a single inline line like `speakers = min×60 ÷ sec` (more compact)?**
+
+[07/12/2026 22:07:20 +00:00] Seifer, Evan:
+Add it as a pop up menu when you press a button called "Disruptiveness Key". The button should be at the bottom of the agenda, and the key will only appear when the player presses the button. When the player presses the button a second time, the key will close. Use the real typographic function
+
+Response:
+Since this is a purely additive feature (button + hidden popup + toggle), it's cleanest to hand you three surgical paste-ins rather than regenerate whole files. All three go into your existing files.
+
+## 1. HTML — add inside the agenda panel
+
+In `index.html`, find the `<aside class="agenda-panel">` block. **After the `</ol>` closing the agenda list**, and **before the closing `</aside>`**, paste:
+
+```html
+<button class="key-toggle-btn" id="key-toggle-btn">Disruptiveness Key</button>
+
+<div class="key-popup hidden" id="key-popup">
+    <div class="key-header">
+        <span>Disruptiveness Key</span>
+        <span class="key-arrow">▲ more</span>
+    </div>
+
+    <div class="key-rows">
+        <div class="key-row">
+            <span class="key-swatch adjourn"></span>
+            <span class="key-label">Adjourn / Suspend</span>
+        </div>
+        <div class="key-row">
+            <span class="key-swatch unmod"></span>
+            <span class="key-label">Unmod</span>
+            <span class="key-hint">longer = more ↑</span>
+        </div>
+        <div class="key-row">
+            <span class="key-swatch rr"></span>
+            <span class="key-label">Round Robin</span>
+            <span class="key-hint">longer = more ↑</span>
+        </div>
+        <div class="key-row mod-row">
+            <span class="key-swatch mod"></span>
+            <span class="key-label">Mod</span>
+            <span class="key-formula">
+                speakers =
+                <span class="frac">
+                    <span class="num">min × 60</span>
+                    <span class="den">sec</span>
+                </span>
+            </span>
+        </div>
+        <div class="key-row">
+            <span class="key-swatch spklist"></span>
+            <span class="key-label">Speaker's List</span>
+        </div>
+    </div>
+
+    <div class="key-footer">
+        <span class="key-arrow-down">▼ less</span>
+        <span class="key-tie">tie? → earlier proposal wins</span>
+    </div>
+</div>
+```
+
+## 2. CSS — append to the end of `style.css`
+
+
+# Disruptiveness Key — toggleable popup
+
+Three small snippets, each appended to the end of the matching file. No existing code is modified.
+
+**1. `index.html`** — Paste the HTML snippet inside `<aside class="agenda-panel">`, right after the closing `</ol>` of the agenda list. This adds the "Disruptiveness Key ▾" button below the notepad and the hidden popup panel.
+
+**2. `style.css`** — Append the CSS block to the very bottom. Styles the toggle button (cream/gold, matches the paper aesthetic), the popup itself (floats above the agenda area with a soft drop shadow), the five color-coded swatches, and the real typographic fraction for the mod formula.
+
+**3. `game.js`** — Append the JS block to the very bottom. Handles: click button to open, click again to close, click anywhere outside the popup to close, and `Esc` to close. The button chevron flips (▾ ↔ ▴) to signal state.
+
+**Visual details:**
+- Button sits at the bottom of the agenda panel, styled to match Phase 1's correction button (cream + gold border, typewriter font).
+- Popup floats above the button when open — doesn't push other UI around.
+- Row order top-to-bottom: **Adjourn** (black filled) → **Unmod** (red) → **Round Robin** (orange) → **Mod** (blue, with formula) → **Speaker's List** (white outline).
+- The mod formula renders as a real division: `min × 60` over `sec` with a horizontal bar, followed by `· more ↑`.
+- `▲ more` at the top of the popup, `▼ less` at the bottom-left, and the tiebreaker rule *"tie? → earlier proposal wins"* at the bottom-right in italic.
+
+Paste all three snippets, reload, and click the button to test.
+
+[07/12/2026 22:09:36 +00:00] Seifer, Evan:
+[Vision Image(s)]
+Please add those additions to these files for me
+
+Response:
+ [index.html](/generatedImages/eec54686-1e90-6217-d952-ddd2ca2e3684/2b6fb6f2-22bd-4b5c-b260-4f6b248ceba1/845e4ca3-d1f9-8c4b-bbad-a73fba4c3e55/index.html "index.html") 
+
+ 
+
+ [style.css](/generatedImages/eec54686-1e90-6217-d952-ddd2ca2e3684/2b6fb6f2-22bd-4b5c-b260-4f6b248ceba1/79eaca96-f2cd-954b-aecf-4a7a26c49526/style.css "style.css") 
+
+ 
+
+ [game.js](/generatedImages/eec54686-1e90-6217-d952-ddd2ca2e3684/2b6fb6f2-22bd-4b5c-b260-4f6b248ceba1/8ba7cf9b-0111-ee45-9697-93d1ec9b6fc2/game.js "game.js") 
+
+ All three files are updated with the Disruptiveness Key integrated:
+
+- **`index.html`** — button + popup markup added inside the agenda panel, right after the agenda list.
+- **`style.css`** — full styling for the button, popup, color swatches, and typographic fraction appended to the end.
+- **`game.js`** — toggle logic (click to open/close, click outside to close, Esc to close) appended to the end.
+
+Replace all three of your files with the attached versions and reload.
+
+[07/12/2026 22:16:55 +00:00] Seifer, Evan:
+For mods, directly say that more speakers make it more disruptive, and instead of the formula, indicate that the number of speakers is the number of times the amount of seconds provided goes into the number of minutes provided. The goal is for people to be able to quicly do the math in their head. Provide a mock up
+
+Response:
+Here's the revised mockup for the Mod row:
+
+```
+┌───────────────────────────────────────────────┐
+│  DISRUPTIVENESS KEY                     ▲     │
+│                                       more    │
+│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━    │
+│                                               │
+│  ⬛  Adjourn / Suspend                         │
+│                                               │
+│  🟥  Unmod              longer = more ↑       │
+│                                               │
+│  🟧  Round Robin        longer = more ↑       │
+│                                               │
+│  🟦  Mod                more speakers = more ↑│
+│         speakers = how many times the sec     │
+│         fits into the min                     │
+│         e.g.  3 min 30 sec → 30 fits into     │
+│               3 min (180s) 6 times → 6 spkrs  │
+│                                               │
+│  ⬜  Speaker's List                            │
+│                                               │
+│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━    │
+│                                       less    │
+│                                         ▼     │
+│  tie? → earlier proposal wins                 │
+└───────────────────────────────────────────────┘
+```
+
+**What changed for the Mod row:**
+
+- **Right-side hint upgraded** from just the formula to a plain-English rule: *"more speakers = more ↑"* — matches the pattern set by Unmod and Round Robin (all three now teach the "more = more" rule the same way).
+- **Formula replaced with a mental-math instruction:** *"speakers = how many times the sec fits into the min."* Frames it as division-by-fitting, which is how you'd actually do it in your head at the dais ("how many 30s fit in 3 minutes? six").
+- **Worked example directly below:** *"e.g. 3 min 30 sec → 30 fits into 3 min (180s) 6 times → 6 spkrs."* Shows the conversion (min → sec) and the fit-count in one line. New players read this once and lock in the pattern.
+
+**Layout notes:**
+
+- Mod row grows to 3 visual sub-lines (swatch + label on line 1, rule on line 1 right side, mental-math sentence on line 2, worked example on line 3) — indented under the swatch column so it visually reads as "commentary on Mod."
+- Text style: rule line stays italic gray like the others; the mental-math + example lines are slightly smaller (`0.72rem`) in soft ink color, non-italic, to differentiate "explanation" from "rule."
+- Total popup height grows by ~35px — still well within the notepad area.
+- All other rows unchanged.
+
+Confirm this direction and I'll wire it into `index.html` and `style.css`.
+
+[07/12/2026 22:18:52 +00:00] Seifer, Evan:
+[Vision Image(s)]
+for the e.g. change it to say "3 min 30 sec → 6 spkrs" I think that is enough. Edit the index and style files provided
+
+Response:
+ [index.html](/generatedImages/eec54686-1e90-6217-d952-ddd2ca2e3684/3e7c4d49-bfad-43bf-9741-6fa9f5b2221a/acd185f1-adff-9b43-8c27-48ffb6fe68a5/index.html "index.html") 
+
+ 
+
+ [style.css](/generatedImages/eec54686-1e90-6217-d952-ddd2ca2e3684/3e7c4d49-bfad-43bf-9741-6fa9f5b2221a/2c96031b-5572-6a4f-8384-3150b8aca38e/style.css "style.css") 
+
+ Both files updated. Changes made:
+
+**`index.html` — Mod row rewritten**
+- Removed the fraction formula (`speakers = min×60 / sec`).
+- Right-side hint now reads *"more speakers = more ↑"* — matches the pattern used by Unmod and Round Robin.
+- Below the label, an indented explanation block appears with two lines:
+  - *"speakers = how many times the sec fits into the min"*
+  - *"e.g.  3 min 30 sec → 6 spkrs"* (typewriter font for the example so it visually feels like scratch-paper math).
+
+**`style.css` — Mod row styles updated**
+- `.mod-row` now wraps: label + hint on the top line, explanation block wraps to a full-width second row.
+- `.mod-explain` indents under the label (past the swatch) so it visually reads as commentary on Mod.
+- `.mod-rule` in soft italic gray; `.mod-example` in Special Elite typewriter font for the worked example.
+- Old `.key-formula` / `.frac` styles removed (no longer used).
+
+Replace your `index.html` and `style.css` with the attached files and reload.
+
+[07/12/2026 22:24:02 +00:00] Seifer, Evan:
+Actually, get rid of the "speakers = how many times the sec fits into the min" and edit the e.g. to say "3 min, 30 sec → 6 spkrs". Also, bring the more and less arrows both to the right side of the box so they are easier to see and make the button and key dark blue with white text like the Dais indicator. Change the colors of the boxes inside accordingly
+
+Response:
+ [index.html](/generatedImages/eec54686-1e90-6217-d952-ddd2ca2e3684/e94ce3dd-2d56-41bb-a463-18b2dcf5d7d8/e38809a1-fedb-aa46-aab8-65350e96606b/index.html "index.html") 
+
+ 
+
+ [style.css](/generatedImages/eec54686-1e90-6217-d952-ddd2ca2e3684/e94ce3dd-2d56-41bb-a463-18b2dcf5d7d8/0b35ce6b-f46e-dc4c-8d69-7ba903987149/style.css "style.css") 
+
+ [index.html](/generatedImages/eec54686-1e90-6217-d952-ddd2ca2e3684/turn/index.html "index.html") 
+
+ [style.css](/generatedImages/eec54686-1e90-6217-d952-ddd2ca2e3684/turn/style.css "style.css")
+
+Both files updated:
+
+**`index.html`** — Mod row cleaned up. Removed the "speakers = how many times…" line entirely; kept only the right-side hint *"more speakers = more ↑"* and the worked example *"e.g. 3 min, 30 sec → 6 spkrs"* (with comma) indented below in typewriter font. Also swapped the arrow positions: `▲ more` now lives in the top-right of the header, and `▼ less` moved to the bottom-right of the footer. The tiebreaker text shifted to the bottom-left.
+
+**`style.css`** — Full color overhaul on the Disruptiveness Key:
+- **Button** now Carolina blue dark background with white text (matches the dais banner). Hover lightens slightly; active state darkens and adds a gold border.
+- **Popup** also Carolina blue dark with white text, capped with the same gold double-line border the dais uses. Dashed dividers inside are now white-transparent instead of ink-transparent.
+- **Header text** in soft gold (`--gold-soft`) so the "DISRUPTIVENESS KEY" title reads like an official label.
+- **Swatch colors updated for contrast on dark background:**
+  - Adjourn → pure black with white border
+  - Unmod → brighter red (`#e0503f`)
+  - RR → brighter orange (`#f0a04b`)
+  - Mod → Carolina blue with white border (pops against the darker parent)
+  - Speaker's List → transparent with white border (reads as "empty/baseline")
+- All labels white, hints in muted white (`rgba(255,255,255,0.7)`) italic.
+
+Replace both files and reload.
+
+[07/12/2026 22:28:48 +00:00] Seifer, Evan:
+In phase 1, can you make it so one of the slackers always makes the "here" error? Also, in phase 2, can you make it so one person always makes the multiple of 3 error? I think it would be beneficial for teaching if those errors always exist
+
+Response:
+Before I edit, I need the current `game.js` — it's been through a lot of iterations and I don't want to guess at the exact state. Please paste or upload it.
+
+Once I have it, here's the plan:
+
+**Phase 1 — guaranteed "here" error:**
+- At setup, randomly pick **one** of the two Slackers and flag them `guaranteedHere: true`.
+- That Slacker's first response is locked to "Here." or "here." (never "Present" on the first try).
+- The other Slacker keeps the existing random behavior (~45% chance of "here").
+- Once the player uses the correction on anyone, the `correctionUsed` flag still suppresses all future "here"s — so the guaranteed one only fires if it hasn't been triggered by the other Slacker first (which almost never matters since the guaranteed one always goes when their name is called).
+- Result: every session has at least one "here" moment.
+
+**Phase 2 — guaranteed multiple-of-3 error:**
+- At the start of Phase 2, randomly pick **one** requesting delegate who's a Power-Del or Dem-Boy (mod-proposer) and flag them `guaranteedBadMod: true`.
+- When that delegate is recognized, they always propose a correction-triggering mod (`4 45`, `5 45`, `7 45`, or `8 45` — filtered by present count).
+- The other mod-proposers keep the current ~35% random chance.
+- Result: every session has at least one 45-second-mod correction moment.
+
+Paste the current `game.js` and I'll ship the update.
+
+[07/12/2026 22:30:58 +00:00] Seifer, Evan:
+You can remove the randomness from both errors for other delegates because having it happen once guaranteed is enough. Never let a Power-Del or a CarolinaMUN-style del make those mistakes
+
+Response:
+Got it. To confirm the design:
+
+- **Phase 1 "here" error:** exactly one Slacker (randomly chosen at setup) always says "here" on their first response. The other Slacker never says "here" — they always go straight to "Present" / "Uh, present." Guaranteed once, never twice.
+- **Phase 2 multiple-of-3 error:** exactly one **Dem-Boy** (randomly chosen at Phase 2 start) always proposes a correction-triggering mod (`4 45`, `5 45`, `7 45`, or `8 45`). Power-Dels and CarolinaMUN-Style dels never make this error. Other Dem-Boys never make it either. Guaranteed once, never twice.
+
+Since only Power-Dels and Dem-Boys propose mods in the current design, and Power-Dels are excluded, it has to be a Dem-Boy. If for some reason the requesting pool happens to not contain a Dem-Boy in a given session, I'll fall back to letting one Power-Del make the error rather than skipping it (so the teaching moment always happens). Let me know if you'd prefer it strictly Dem-Boy-only even at the cost of occasionally skipping the moment.
+
+Please paste or upload the current `game.js` so I can make surgical edits without regressing the recent changes (disruptiveness scoring, name shortening, no periods, no 60-sec mods, etc.).
+
+[07/12/2026 22:32:15 +00:00] Seifer, Evan:
+[Vision Image(s)]
+I like that idea
+
+Response:
+ [game.js](/generatedImages/eec54686-1e90-6217-d952-ddd2ca2e3684/67f1b70b-a4ea-4880-a459-a529588ddff0/7d8d4409-8f7a-404f-80c4-3d92ce09c0b9/game.js "game.js") 
+
+ [game.js](/api/generatedFiles/game.js "game.js")
+
+Both guaranteed-error mechanics are wired in. Summary of the surgical changes:
+
+**Phase 1 — guaranteed "here" error**
+- Every session, one **present Slacker** is randomly flagged `guaranteedHere: true` at committee generation (after absence is resolved, so it's never assigned to the absent Slacker).
+- Slacker `getResponse` was rewritten: only the flagged Slacker ever says "Here." / "here." All other Slackers go straight to "Present." / "Uh, present." — no randomness.
+- The existing `correctionUsed` guard still applies: once the chair uses the correction, even the flagged Slacker won't repeat the error if called again (relevant only if the flagged one is called last after another Slacker already responded normally, which won't happen since only they say "here").
+
+**Phase 2 — guaranteed multiple-of-3 error**
+- In `handleCallForMotions`, at least one present **Dem-Boy** is guaranteed to be among the 5 raised delegates. That Dem-Boy is flagged `guaranteedBadMod: true`.
+- In `generateMotion`, the ~35% random chance was removed entirely. The correction-triggering mod (`4 45` / `5 45` / `7 45` / `8 45`) only fires when the delegate has `guaranteedBadMod`. Power-Dels and CarolinaMUN-Style delegates can never trigger it (Power-Dels because they're unflagged; CarolinaMUN because they only propose round robins).
+- The flag is cleared the instant the bad mod is issued (`guaranteedBadMod = false`), so if for any reason the same delegate speaks again it won't repeat.
+- Fallback: if a session somehow has zero present Dem-Boys (statistically very rare given 2 Dem-Boys always exist and absence only removes a Slacker), the game gracefully falls back to the old random 5-pick and no correction fires that session — Power-Dels are still never flagged.
+
+Replace your `game.js` with the attached file and reload.
+
+[07/12/2026 22:41:47 +00:00] Seifer, Evan:
+now that we are at a good stopping point, i want you to suggest a way you can summarize everything that we have decided, speced, and built for the MUN Game, including the purpose, audience, design, features, and how it has been built. And where we are in the plan. maybe a document or .md file. 
+
+Response:
+Great instinct — this project has accumulated a lot of design decisions across ~30 iterations and having a single source of truth is exactly what you'll want before we tackle Phase 3 (or hand this off, or come back to it after a break).
+
+Here's what I'd recommend and why:
+
+## The Right Format: A Living Design Document (`DESIGN.md`)
+
+A single **Markdown file** kept in the project root next to your code. Markdown is ideal because:
+
+- **GitHub / VS Code render it natively** — headings, tables, checkboxes all display beautifully with zero setup.
+- **It lives with the code**, so anyone who clones the repo (future you, a collaborator, a UNCMUNC teammate) gets the design context automatically.
+- **Version-controllable** — every change to the design is tracked alongside code changes if you ever put this on GitHub.
+- **Easy to update** — as we build Phase 3, 4, 5, we just append sections and check off completed items.
+
+## Proposed Structure
+
+I'd organize it into these sections, in this order (skimmable top-to-bottom, most important context first):
+
+1. **One-line pitch** — what the game *is*, in a sentence.
+2. **Purpose & audience** — why it exists, who it's for (collegiate MUN prep, UNCMUNC training specifically).
+3. **Design principles** — the "rules of taste" we've been following (formal-but-handmade, campy crisis-staff aesthetic, procedure-forward, topic-agnostic, ≤30 min sessions).
+4. **Aesthetic direction** — Carolina Blue palette, fonts (Playfair / Special Elite / Lora), texture, subtle UNCMUNC references, illustration-ready swap system.
+5. **Game structure** — the five phases in order, with what each teaches and its status (✅ built, 🚧 partial, ⬜ planned).
+6. **Delegate personality system** — the four archetypes, their behaviors across phases, boss relationships, guaranteed-error rules. This is the backbone of the whole game so it deserves its own section.
+7. **Phase 1: Roll Call** — full spec of what's built (room layout, alphabetical calling, response flow, correction mechanic, absence rules, scoring axes).
+8. **Phase 2: Points & Motions** — motion pools, valid/invalid mod math, dilatory ruling, 45-sec correction, guaranteed errors, disruptiveness ranking, voting mechanics, scoring.
+9. **Phases 3–5: Planned** — placeholders for Moderated Caucus, Unmoderated Caucus, Voting Procedure. Rough intent only; final specs happen when we build them.
+10. **Technical architecture** — three-file structure, no build step, illustration swap config (`DELEGATE_ART`), state object shape, key functions/flow.
+11. **How to run and edit** — VS Code setup, Live Server, folder layout. Basically the "onboarding" section.
+12. **Change log** — a short list of major milestones (v1 → v10-ish) so future-you remembers *why* certain decisions were made.
+13. **Open questions / deferred decisions** — things we've explicitly parked (Crisis Break as optional side mode, illustration replacement, potential scoring tweaks).
+
+## What I Won't Include
+
+- **The code itself.** The files are the source of truth for what's built; the doc's job is to describe *intent*, not duplicate implementation. If we duplicate code, the doc goes stale the moment we edit `game.js`.
+- **Line-level technical details** unless they're load-bearing design decisions (like the `DELEGATE_ART` swap pattern, which is a design commitment, not just a code detail).
+
+## Two Small Choices Before I Write It
+
+1. **Voice/tone of the doc:** should it read as a **formal design spec** (numbered, terse, professional — good if you'd ever hand this to a professor, a UNCMUNC advisor, or a portfolio reviewer), or **a working-notes document** (first-person, conversational, "here's where we are and what we're thinking" — good if it's mostly for you and future collaborators)? I'd lean formal-spec with a light touch, since the topic is inherently procedural and it'll age better. But your call.
+2. **Do you want a second file — a lightweight `README.md`** — that's just the pitch + "how to run it" for someone who lands on the project cold? The `DESIGN.md` is the deep doc; `README.md` is the front door. I'd recommend both, and they're cheap to maintain since the README is short.
+
+Say the word (formal vs. working-notes, one file or two) and I'll produce the artifact(s) in the next message.
+
+[07/15/2026 21:08:36 +00:00] Seifer, Evan:
+Formal design spec. Do not need a second lightweight readme file.
+
+Response:
+An error occurred while processing your request. Please try again later.
+
+[07/15/2026 21:19:04 +00:00] Seifer, Evan:
+Now that a motion has passed, we can continue with phase 2. The two motions that failed should be crossed out and the motion that passed should become a dropdown menu. The player should ask "[Delegate who proposed the motion], would you like to speak first or last?" Then, Power dels and CarolinaMUN style should always respond first, and DemBoys and slackers should always respond last. Make the dialogue fit their personalities. If a mod was passed, the delegate should be added to the list in the dropdown menu in the position they specified, and the player will be instructed to "I will now select the first [half of the number of the speakers for the proposed mod] speakers for this moderated caucus. Please raise your placards high." Every delegate except one slacker and the delegate who proposed the motion should raise their placard. The player then selects the number of dels specified and they are added to the list in the dropdown in that order. After that, those delegates will give speeches, but we will code that separately with a different prompt because this one is long. After all speakers in the current list, except for the one who proposed the motion if they chose to speak last, have given their speeches, the player will say "I will now select the remaining [remaining number of speakers for the proposed mod minus the one who proposed the motion if they chose to speak last] speakers for this moderated caucus. Please raise your placards high." After every delegate has concluded their speech, phase 2 will end. I want to write separate prompts explaining the procedure for what to do when a round robin passes and for giving speeches, so right now just explain to me how you will implement what I just said before doing anything
+
+Response:
+Good stopping point to align before I code — this is a substantial state change and I want to make sure I've got it right. Here's my implementation plan:
+
+## High-Level Flow (Mod-Passed Branch)
+
+After a motion passes, instead of jumping to the Phase 3 placeholder screen, we enter a new **post-vote sequence** that lives inside Phase 2. The sequence has four sub-stages, each with its own dais bar prompt:
+
+1. **Ask proposer speaking preference**
+2. **Select first half of speakers**
+3. **Speeches** (deferred — separate prompt from you)
+4. **Select remaining speakers**
+5. **End Phase 2** after last speech
+
+I'll branch on motion type at the point of passage: if `type === "mod"` → run this sequence; if `type === "rr"` → run the round-robin sequence (you'll spec later); if `type === "unmod"` → unmod flow (deferred).
+
+## Agenda Panel Changes
+
+- **Failed motions** get a permanent strikethrough (the `.motion-failed` class already exists from voting — I'll just make sure it stays applied after the phase moves on).
+- **Passed motion** transforms into a **dropdown/expandable list**. Header line shows the motion shorthand (e.g., `France 3 30 Funding`); clicking it toggles a nested list underneath showing the speaker order as it's built up. Position 1, 2, 3… fill in as speakers are selected.
+- The dropdown is expanded by default when the passed motion is set, so the player sees the list building in real time. Clicking the header collapses/expands it.
+
+## Sub-Stage 1: Speaking Preference
+
+- Dais bar shows a chair-prompt button: **`"[Country], would you like to speak first or last?"`** — using the proposer's country name.
+- Clicking it makes the proposer's placard raise; a speech bubble appears with their answer:
+  - **Power-Del** → chooses **first**. Line: *"The delegation of [Country] will speak first, chair"* (assertive, brown-noses the chair).
+  - **CarolinaMUN-Style** → chooses **first**. Line: *"I'd love to kick us off!"* (personable, eager).
+  - **Dem-Boy** → chooses **last**. Line: *"Last, chair"* (deferential, brief).
+  - **Slacker** → chooses **last**. Line: *"Uh… last I guess"* (uncertain).
+- After the response, the proposer is inserted into the speaker list at **position 1** (if first) or **position N** where N = total speakers for the mod (if last). Their name appears in the agenda dropdown accordingly.
+- Placard lowers, bubble clears, advance to next stage.
+
+## Sub-Stage 2: Select First Half
+
+- Compute `totalSpeakers = (min × 60) / sec` — already tracked on the motion object.
+- Compute `firstHalf = Math.floor(totalSpeakers / 2)`. (For a 3·30 = 6 speakers, first half = 3. For 2·30 = 4 speakers, first half = 2. For 6·45 = 8 speakers, first half = 4.)
+- Dais bar shows chair-prompt: **`"I will now select the first [firstHalf] speakers for this moderated caucus. Please raise your placards high."`**
+- Clicking triggers the raise: **every present delegate raises their placard EXCEPT (a) the proposer and (b) one randomly selected present Slacker**. If there's only one Slacker present (the other is the absent one), that Slacker is the one who doesn't raise. If both Slackers are present, pick one at random.
+- The remaining raised delegates become clickable (existing `.requesting` class + click handler pattern).
+- Player clicks delegates one at a time. Each click:
+  - Adds them to the speaker list at the next open position (position 2 if proposer went first, position 1 if proposer went last, and so on).
+  - Their placard lowers.
+  - Dropdown updates live.
+  - A small counter on the dais bar shows `Selected: X / firstHalf`.
+- When `firstHalf` delegates have been picked, all remaining raised placards lower, and we advance.
+
+## Sub-Stage 3: Speeches (Deferred)
+
+I'll stub this as a "→ Speeches" transition button that leads to a placeholder screen for now. When you send the speeches spec, we'll flesh this out. The list of who speaks in what order is fully determined by this point, so the speech phase just needs to iterate that list.
+
+## Sub-Stage 4: Select Remaining Speakers
+
+- Triggered after the last first-half speech.
+- Compute `remaining = totalSpeakers - firstHalfSpeakersWhoAlreadySpoke - (1 if proposer chose last else 0)`.
+  - For a 3·30 (6 total), proposer-first: first half = 3 (including proposer), remaining = 3.
+  - For a 3·30 (6 total), proposer-last: first half = 3, remaining = 2 (since proposer is reserved for the final slot).
+- Dais bar: **`"I will now select the remaining [remaining] speakers for this moderated caucus. Please raise your placards high."`**
+- Same raise/select pattern as sub-stage 2. Rules for who raises:
+  - Anyone who **already spoke** does not raise.
+  - The proposer does not raise (whether they went first or are reserved for last).
+  - One Slacker still refuses to raise (either the same one or the other, doesn't matter — I'll pick a present Slacker who hasn't spoken yet).
+- Player picks `remaining` delegates → they fill positions in the dropdown after the first-half speakers.
+- If proposer chose last, they automatically occupy the final slot (already assigned in Sub-Stage 1) — the dropdown just visually shows their name pinned to the bottom.
+
+## Sub-Stage 5: End of Phase 2
+
+- After the final speech (again, deferred logic), Phase 2 concludes and transitions to the Phase 3 placeholder.
+
+## State Additions to `state.p2`
+
+```js
+postVote: {
+    passedMotion: null,        // the motion object
+    proposer: null,            // delegate ref
+    speakingPreference: null,  // "first" or "last"
+    totalSpeakers: 0,
+    firstHalf: 0,
+    speakerList: [],           // ordered array of delegate refs, indexed by position
+    speakerListSize: 0,        // grows as slots fill
+    stage: null,               // "ask-preference" | "select-first" | "speeches" | "select-remaining" | "done"
+    skippedSlackerIdx: null,   // which Slacker refuses to raise
+    selectionTarget: 0,        // how many to pick in current selection stage
+    selectionCount: 0,         // how many picked so far
+}
+```
+
+## Agenda Rendering Changes
+
+- The existing `renderAgenda()` currently just lists motions in `<li>` tags. I'll extend it so:
+  - Failed motions stay struck through.
+  - The passed motion becomes an `<li>` with a toggle chevron, and when expanded shows an inner `<ol>` of speakers (position numbers + country names).
+  - Empty slots show as `— open —` in dim italic so the player can watch the list fill up.
+
+## Personality-Fit Dialogue Reference
+
+| Personality | Preference | Line |
+|---|---|---|
+| Power-Del | First | *"The delegation of [Country] will speak first, chair"* |
+| CarolinaMUN-Style | First | *"I'd love to kick us off!"* |
+| Dem-Boy | Last | *"Last, chair"* |
+| Slacker | Last | *"Uh… last I guess"* |
+
+I can tweak any of these — say the word if you want different phrasings.
+
+## Things I Want to Confirm Before Coding
+
+1. **Odd speaker counts.** For an odd-speaker mod, `floor(total/2)` puts fewer speakers in the first half. Example: 5 speakers → first half = 2, remaining = 3. Is that what you want, or should first half be `ceil(total/2)` (3 and 2)? Current valid mod pool doesn't produce odd counts (4, 6, 8), but the correction pool includes `3 45` = 4 speakers so this edge case never actually fires — still worth locking in for future-proofing.
+2. **The excluded Slacker.** You said "one slacker and the delegate who proposed the motion" should not raise. What if the proposer is themselves a Slacker (impossible in current design since only Power-Dels, Dem-Boys, and CarolinaMUN-Style dels propose motions — but confirming the rule)? Also: should the same Slacker refuse to raise in *both* selection stages, or a different one each time? I'd default to same one both times (consistent character), unless they end up being the only unpicked delegate at the very end.
+3. **Speakers list dropdown behavior.** Should the dropdown be expanded by default (so the list visibly fills as speakers are picked — my preference for teaching value) or collapsed by default (cleaner)?
+4. **Clicking the dropdown during selection.** Should clicks on the dropdown be blocked during placard-raising selection stages, or is it fine to let the player expand/collapse it anytime?
+
+Let me know your answers to those four, and any tweaks to the dialogue lines or flow, and I'll implement.
+
+[07/15/2026 21:33:42 +00:00] Seifer, Evan:
+For odd counts, it should be ceil instead of floor. The dropdown should be expanded by default and players can expand/collapse it any time. For the second half of selecting speakers. Everyone who did not raise their hand the first time should raise their hand again, including the speaker who proposed the motion if they spoke first. You can also make the power del always raise their placard every time speakers need to be selected (including if they are speaking first in the first round of selecting or last in the second round of selecting), and carolinamun dels raise their placard every time there are not enough delegates to fill up a speaker list without repeats. For scoring, players should be punished for selecting repeat speakers unless there are absolutely not enough delegates to fill up the full speaker list for the motion. explain to me how you will implement what I just said before doing anything
+
+
+Response:
+Good — locking these rules in changes the design meaningfully. Here's my full implementation plan before I touch any code.
+
+## Speaker Count Math
+
+- `totalSpeakers = (min × 60) / sec` (already tracked on the motion).
+- `firstHalfTarget = Math.ceil(totalSpeakers / 2)` (per your correction).
+- Proposer occupies position 1 (if they chose first) or position `totalSpeakers` (if last).
+- **First-round selection count** = `firstHalfTarget - (1 if proposer chose first else 0)`
+- **Second-round selection count** = `totalSpeakers - firstHalfTarget - (1 if proposer chose last else 0)`
+
+Worked examples:
+
+| Mod | Total | First half (ceil) | Proposer first | Proposer last |
+|---|---|---|---|---|
+| 2·30 | 4 | 2 | Pick 1 + 2 | 2 + 1 |
+| 3·30 | 6 | 3 | Pick 2 + 3 | 3 + 2 |
+| 3·45 | 4 | 2 | Pick 1 + 2 | 2 + 1 |
+| 6·45 | 8 | 4 | Pick 3 + 4 | 4 + 3 |
+
+## Who Raises Their Placard — Rules
+
+I'll consolidate the rules into a single `shouldRaise(delegate, round)` function so all edge cases resolve in one place.
+
+**Round 1 (first-half selection):**
+- Everyone present raises **EXCEPT** (a) the proposer and (b) one designated Slacker.
+- **Power-Del override:** always raises, even if they're the proposer. If the proposer is a Power-Del, they raise anyway — creating the "trap" where the player has to remember not to pick them.
+- **CarolinaMUN override:** on top of default behavior, always raises when a repeat would be mathematically required to fill the list. In practice this doesn't fire with the current mod pool (no mod exceeds present count), but the logic is there.
+
+**Round 2 (second-half selection):**
+- Everyone who **did not raise in Round 1** raises now. That includes: the previously-refusing Slacker, and the proposer if they spoke first (since they were unavailable in Round 1).
+- Everyone who already spoke does **not** raise, **except:**
+  - **Power-Del** always raises (repeat trap continues).
+  - **CarolinaMUN** raises if repeats are needed to fill the list.
+- The proposer who chose **last** does not raise (they're reserved for the final slot).
+
+**Slacker designation:** at the start of the post-vote sequence, one present Slacker is randomly flagged `refusesRound1: true`. If only one Slacker is present (the other was the absent one), that one is chosen. If both are present, randomize. Same Slacker for consistency — they raise in Round 2.
+
+## Repeat Selection & Scoring
+
+**Definition of a legitimate repeat requirement:**
+- `neededRepeats = Math.max(0, totalSpeakers - presentCount)`.
+- With the current mod pool + present-count filtering, `neededRepeats` is always `0`. The logic still runs so future difficulty tuning can introduce forced repeats.
+
+**Penalty logic:**
+- Each time the player clicks a delegate who is already in `speakerList`, increment `repeatsSelected`.
+- Compare to `neededRepeats` at the end of Phase 2:
+  - `repeatsSelected ≤ neededRepeats` → no penalty (legitimate).
+  - `repeatsSelected > neededRepeats` → each excess repeat = penalty on the Phase 2 procedural accuracy score.
+- **UX feedback:** when the player clicks a delegate already in the list, the click still registers (adds them again), but a small red inline warning flashes in the dais bar: *"Repeat selection — [Country] is already speaker #N."* This teaches without blocking, since sometimes repeats *are* legitimate.
+- Optional stretch: I can make repeat-clicks require confirmation (double-click, or a "Confirm repeat" button) if you'd rather protect the player from accidents. Let me know — my default is the flash warning only.
+
+## Agenda Panel Changes
+
+- **Failed motions:** existing strikethrough style persists.
+- **Passed motion:** transforms into an expandable dropdown block.
+  - Header row: `▾ France 3 30 Funding` (motion shorthand + toggle chevron).
+  - Expanded body: numbered ordered list, positions 1 through `totalSpeakers`. Filled slots show country names; empty slots show `— open —` in dim italic.
+  - **Expanded by default.** Chevron toggles between `▾` (expanded) and `▸` (collapsed). Clickable anytime, including mid-selection.
+- Speaker list updates live as slots fill.
+
+## Post-Vote Sub-Stages (State Machine)
+
+Adding a `postVote` sub-state object under `state.p2`:
+
+```js
+postVote: {
+    passedMotion: ref,
+    proposer: delegateRef,
+    preference: null,          // "first" | "last"
+    totalSpeakers: N,
+    firstHalfTarget: N,
+    speakerList: [],           // ordered; index = position - 1
+    stage: null,               // see below
+    refusingSlackerIdx: N,     // designated Round 1 non-raiser
+    selectionTarget: N,        // how many to pick this round
+    selectionCount: 0,
+    repeatsSelected: 0,
+    neededRepeats: 0,
+}
+```
+
+Stages:
+1. `ask-preference` — chair-prompt button appears
+2. `select-first-half` — placards raise, player picks
+3. `speeches-first-half` — deferred (placeholder button for now)
+4. `select-second-half` — placards raise again, player picks
+5. `speeches-second-half` — deferred
+6. `phase-complete` — transitions to Phase 3 placeholder
+
+For this build I'll implement stages 1, 2, and 4 fully. Stages 3 and 5 will be single "→ Continue" placeholder transitions until you send the speech spec, at which point we'll flesh out the speech animation/timing logic.
+
+## Personality Dialogue for Speaking Preference
+
+Chair prompt button: **`"[Country], would you like to speak first or last?"`**
+
+Responses (I'll drop the trailing period per your earlier rule):
+
+| Personality | Choice | Line |
+|---|---|---|
+| Power-Del | First | *"The delegation of [Country] will speak first, chair"* |
+| CarolinaMUN-Style | First | *"I'd love to kick us off!"* |
+| Dem-Boy | Last | *"Last, chair"* |
+| Slacker | Last | *"Uh… last I guess"* |
+
+Say the word if you want different phrasings.
+
+## Chair-Prompt Buttons for Selection Stages
+
+- Round 1 button: **`"I will now select the first [N] speakers for this moderated caucus. Please raise your placards high."`**
+- Round 2 button: **`"I will now select the remaining [N] speakers for this moderated caucus. Please raise your placards high."`**
+
+Both styled like the existing chair-prompt buttons (cream/gold, italic Lora).
+
+## Small Dais Bar Additions During Selection
+
+During Round 1 and Round 2 selection, the dais bar shows a live counter: **`Selected: 2 / 3`** and — only after any repeat click — a small warning line: *"⚠ [Country] already selected as speaker #2."* Warning fades after 3 seconds.
+
+## Confirmations Needed Before I Code
+
+1. **Repeat protection level:** flash warning only (current plan), or require a "Confirm repeat" click? I'd lean warning-only — matches the "chair is responsible for their own calls" philosophy.
+2. **Power-Del in the trap:** if the proposer is a Power-Del who chose to speak first, they'll be raising during Round 1 (as the always-raise rule dictates) despite being in slot 1 already. Clicking them = repeat. Confirmed this is the intent?
+3. **CarolinaMUN "not enough delegates" trigger:** does it fire when `neededRepeats > 0` (strict math), or also as a warning when `neededRepeats == 0` but we're close to needing one? I'd default to strict math (only when actually required).
+4. **Speaker slot numbering in the dropdown:** show as `1. France`, `2. Brazil`, etc.? Or without the position number, just an ordered list? I'd default to explicit numbers so the player can see at a glance which position they're filling.
+5. **Empty slot styling:** *"— open —"* italic dim, or something more procedural like *"— pending —"* or *"— to be selected —"*? Style choice.
+
+Give me your answers on those five and any tweaks to the dialogue, and I'll build it.
+
+[07/15/2026 21:47:03 +00:00] Seifer, Evan:
+One more note, if the person who proposed the motion and spoke first is not a power del, they should not raise their placard in the second round. Powerdels should raise their placard regardless, and carolinamun dels should only do it if necessary. I like the flash warning instead of the double click feature for repeat selections. It is more true to life. Empty slots in the expanded body of the dropdown do not need to say — open —, they can just be blank. CarolinaMUN-Style dels when choosing to speak first can just say "First please." In the chair prompt buttons for round 1 and two, bold the words "first" and "remaining". If the proposer is a Power-Del who chose to speak first, they'll be raising during Round 1 (as the always-raise rule dictates) despite being in slot 1 already. Clicking them = repeat. Yes that is the case. CarolinaMUN "not enough delegates" trigger should be for strict math only. Speaker slots in the dropdown should be explicitly numbered. explain to me how you will implement what I just said before doing anything
+
+Response:
+Locked in. Here's the final consolidated plan reflecting all your latest notes, plus everything from the previous confirmation. I'll implement after you approve.
+
+## Consolidated Rules
+
+**Speaker count math**
+- `totalSpeakers = (min × 60) / sec`
+- `firstHalfTarget = Math.ceil(totalSpeakers / 2)`
+- Round 1 picks = `firstHalfTarget − (1 if proposer chose first else 0)`
+- Round 2 picks = `totalSpeakers − firstHalfTarget − (1 if proposer chose last else 0)`
+
+**Who raises — Round 1**
+- Everyone present raises **EXCEPT** the proposer and one designated Slacker (the `refusingSlackerIdx`, chosen at post-vote start).
+- **Power-Del override:** always raises — even if they are the proposer and already have slot 1. Clicking them = repeat.
+- **CarolinaMUN override:** raises only if strict math requires repeats (`totalSpeakers > presentCount`). Not applicable with current mod pool.
+
+**Who raises — Round 2**
+- Baseline: everyone who did **not** raise in Round 1 raises now (the designated Slacker; the proposer if they spoke first).
+- **New rule (your latest):** if the proposer is **not** a Power-Del AND they spoke first, they do **not** raise in Round 2. So only Power-Del proposers who spoke first raise again in Round 2. Dem-Boy / CarolinaMUN / Slacker proposers who spoke first sit Round 2 out (they've already given their speech).
+  - Note: Dem-Boys and Slackers always choose last per the personality rules, so this only ever matters for a CarolinaMUN proposer who chose first — they will not raise in Round 2. Correct.
+- Everyone who already spoke does **not** raise, **except:**
+  - **Power-Del** always raises (repeat trap continues).
+  - **CarolinaMUN** raises only if strict math requires repeats.
+- The proposer who chose **last** does **not** raise (reserved for final slot).
+
+**Refusing Slacker designation**
+- At post-vote start, randomly select one present Slacker → `refusesRound1: true`. Same Slacker raises in Round 2.
+- If only one Slacker is present, that Slacker is chosen automatically.
+
+**Repeat selection & scoring**
+- `neededRepeats = max(0, totalSpeakers − presentCount)` → currently always 0 with the valid mod pool.
+- Every click on an already-selected delegate increments `repeatsSelected` and adds them again to the list.
+- **Flash warning** appears in the dais bar for ~3 seconds: *"⚠ [Country] already selected as speaker #N."* No blocking, no confirm dialog.
+- Excess repeats (`repeatsSelected − neededRepeats`) will factor into the Phase 2 procedural accuracy score in the eventual debrief. For now I'll track it and expose the number.
+
+**Personality speaking-preference dialogue**
+
+| Personality | Choice | Line |
+|---|---|---|
+| Power-Del | First | *"The delegation of [Country] will speak first, chair"* |
+| CarolinaMUN-Style | First | *"First please"* |
+| Dem-Boy | Last | *"Last, chair"* |
+| Slacker | Last | *"Uh… last I guess"* |
+
+**Chair prompt buttons (with bolding)**
+- Round 1: **`"I will now select the`** **first** **`[N] speakers for this moderated caucus. Please raise your placards high."`** — the word "first" bold via `<strong>`.
+- Round 2: **`"I will now select the`** **remaining** **`[N] speakers for this moderated caucus. Please raise your placards high."`** — the word "remaining" bold via `<strong>`.
+
+**Agenda dropdown**
+- Failed motions stay struck through.
+- Passed motion becomes an expandable block with a chevron. Expanded by default; player can toggle anytime.
+- Speaker list is an ordered list numbered explicitly `1. France`, `2. Brazil`, …
+- Empty slots render as blank rows (no placeholder text).
+
+## Sub-Stages I'll Build In This Pass
+
+1. `ask-preference` — chair-prompt button, proposer responds, placard raises + bubble + slot assignment.
+2. `select-first-half` — chair-prompt button ("first" bold), placards raise per Round 1 rules, player picks, dropdown fills.
+3. `speeches-first-half` — placeholder "→ Continue to speeches" button (deferred until your speech spec).
+4. `select-second-half` — chair-prompt button ("remaining" bold), placards raise per Round 2 rules, player picks, dropdown fills.
+5. `speeches-second-half` — placeholder "→ Continue" button.
+6. `phase-complete` — transition to existing Phase 3 placeholder.
+
+## State Additions
+
+Adding `state.p2.postVote`:
+
+```js
+postVote: {
+    passedMotion: ref,
+    proposer: delegateRef,
+    preference: null,          // "first" | "last"
+    totalSpeakers: N,
+    firstHalfTarget: N,
+    speakerList: [],           // ordered; index = position - 1
+    stage: null,
+    refusingSlackerIdx: N,
+    selectionTarget: N,
+    selectionCount: 0,
+    repeatsSelected: 0,
+    neededRepeats: 0,
+    round: 1,                  // 1 or 2 — used by shouldRaise()
+}
+```
+
+## Rendering / DOM Additions
+
+- Extended `renderAgenda()` to render passed motion as `<li class="motion-passed expandable">` with chevron + expandable body.
+- New CSS block appended to `style.css`: chevron styles, dropdown body, numbered slots, blank slot rows, flash-warning banner in dais bar. All matching existing paper/tape/Carolina aesthetic.
+- Dais bar during selection: live counter (`Selected: 2 / 3`) on the left half; warning banner slides in over it briefly on repeat clicks.
+
+## Confirmations Before I Code
+
+Just two quick sanity checks — no design decisions left, but I want to be sure:
+
+1. **CarolinaMUN proposer who chose first, in Round 2:** confirmed they do NOT raise (per "if proposer is not a Power-Del and spoke first, they don't raise in Round 2"). ✓
+2. **Chair-prompt button bolding:** rendering via `<strong>` inside the button innerHTML — should show as visually bold within the existing italic Lora styling. If you'd rather the bold word be in a distinct color (like the "dilatory" underline treatment), say so; otherwise plain bold.
+
+Give me a thumbs up (or note any last tweaks) and I'll ship the build. It'll be `game.js` + `style.css` changes only — `index.html` doesn't need to change.
+
+[07/15/2026 21:59:39 +00:00] Seifer, Evan:
+[Vision Image(s)]
+CarolinaMUN proposer who chose first, in Round 2 does not raise unless absolutely necessary due to repeat numbers. Chair-prompt button bolding should be bolded the same way as the "dilatory" underline treatment. Here are the files, go for it
+
+Response:
+An error occurred while processing your request. Please try again later.
+

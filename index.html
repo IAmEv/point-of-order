@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<!--
+    ============================================================
+    POINT OF ORDER — A UNCMUNC Chair Simulator
+    index.html — v12
+    v12: Phase 3 (Unmoderated Caucus) wiring.
+         - Added id="motions-phase-label" to the phase-label
+           div in #motions-screen so JS can retitle it
+           between Phase 2 and Phase 3 (same screen, reused).
+         - Added a dev-panel button for Phase 3 (was
+           previously disabled as "3 · Unmod"; now active).
+         - Post-motions button (#restart-btn) text is
+           configured dynamically by game.js
+           (configurePostMotionsButton). Kept its default
+           label as "Adjourn & Restart" here for
+           first-paint safety; JS overwrites it as needed.
+    v11: Replaced numeric scorecard blocks with three-star
+         result containers.
+    v10: Housekeeping: version comment block.
+    ============================================================
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Point of Order — A UNCMUNC Chair Simulator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Special+Elite&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="paper-texture"></div>
+
+    <main id="game-container">
+
+        <!-- TITLE SCREEN -->
+        <section id="title-screen" class="screen active">
+            <div class="title-stamp">UNCMUNC · EST. CHAPEL HILL</div>
+            <h1 class="game-title">Point of Order</h1>
+            <p class="game-subtitle">A Chair Simulator</p>
+            <div class="ram-doodle">🐏</div>
+            <p class="flavor-text">
+                The delegates are filing in.<br>
+                Do not embarrass the Secretariat.
+            </p>
+            <button class="big-button" id="begin-btn">Gavel In →</button>
+        </section>
+
+        <!-- BRIEFING SCREEN -->
+        <section id="briefing-screen" class="screen">
+            <div class="memo">
+                <div class="memo-header">
+                    <span class="memo-classification">COMMITTEE OVERVIEW</span>
+                    <span class="memo-date" id="memo-date"></span>
+                </div>
+                <h2 class="memo-title">Your Assignment</h2>
+                <div class="memo-body">
+                    <p><strong>Committee:</strong> <span id="committee-name">—</span></p>
+                    <p><strong>Delegates in attendance:</strong> <span id="delegate-count">—</span></p>
+                    <p><strong>Your role:</strong> Chair. Sole authority on procedure. Try not to cry.</p>
+                </div>
+            </div>
+            <button class="big-button" id="start-roll-call-btn">Begin Roll Call →</button>
+
+            <!-- DEV PANEL — hidden unless DEV_MODE=true in game.js -->
+            <aside id="dev-panel" class="dev-panel hidden" aria-label="Developer phase selector">
+                <div class="dev-panel-label">DEV — Skip to Phase</div>
+                <div class="dev-panel-buttons">
+                    <button class="dev-btn" data-dev-phase="1">1 · Roll Call</button>
+                    <button class="dev-btn" data-dev-phase="2">2 · Moderated Caucus</button>
+                    <button class="dev-btn" data-dev-phase="3">3 · Unmod</button>
+                    <button class="dev-btn" data-dev-phase="4" disabled title="Not built yet">4 · Voting</button>
+                    <button class="dev-btn" data-dev-phase="5" disabled title="Not built yet">5 · Debrief</button>
+                </div>
+            </aside>
+        </section>
+
+        <!-- PHASE 1: ROLL CALL SCREEN -->
+        <section id="roll-call-screen" class="screen fullscreen">
+            <header class="phase-header slim">
+                <div class="phase-label">Phase 1 of 5 · Roll Call</div>
+                <div class="phase-instructions">
+                    Alphabetical calling. Mark <em>Present</em>, <em>P&amp;V</em>, or <em>Absent</em>.
+                    <span class="hint">Empty chairs are already absent — notice them.</span>
+                </div>
+            </header>
+
+            <div class="committee-room" id="committee-room">
+                <div class="room-dais">— THE DAIS · YOU ARE HERE —</div>
+            </div>
+
+            <div class="dais-bar">
+                <div class="calling-info">
+                    <span class="calling-label">The chair recognizes</span>
+                    <span class="calling-country" id="calling-country">—</span>
+                </div>
+
+                <div class="action-row" id="action-row">
+                    <button class="action-btn present" data-action="present">Present <kbd>1</kbd></button>
+                    <button class="action-btn voting" data-action="voting">P&amp;V <kbd>2</kbd></button>
+                    <button class="action-btn absent" data-action="absent">Absent <kbd>3</kbd></button>
+                </div>
+
+                <div class="correction-row hidden" id="correction-row">
+                    <button class="action-btn correct" id="correct-btn">
+                        <em>"Delegations must be either present or present and voting."</em>
+                    </button>
+                </div>
+
+                <div class="roll-progress">
+                    <span class="progress-label"><span id="roll-index">1</span> / <span id="roll-total">8</span></span>
+                    <div class="progress-bar"><div class="progress-fill" id="roll-progress-fill"></div></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- PHASE 1 → 2 TRANSITION -->
+        <section id="transition-screen" class="screen">
+            <h2 class="phase-title">Roll Call Complete</h2>
+            <div class="star-result">
+                <div class="star-row" id="phase1-stars"></div>
+                <p class="mistake-summary" id="phase1-summary"></p>
+            </div>
+            <button class="big-button" id="proceed-motions-btn">Proceed to Motions →</button>
+        </section>
+
+        <!-- PHASE 2 & 3: POINTS & MOTIONS SCREEN (reused for both phases) -->
+        <section id="motions-screen" class="screen fullscreen">
+            <header class="phase-header slim">
+                <!-- v12 — id added so JS can retitle between Phase 2 and Phase 3. -->
+                <div class="phase-label" id="motions-phase-label">Phase 2 of 5 · Points &amp; Motions</div>
+                <div class="phase-instructions" id="motions-instructions">
+                    Ask the floor for motions.
+                </div>
+            </header>
+
+            <div class="phase2-body">
+                <div class="committee-room" id="committee-room-p2">
+                    <div class="room-dais">— THE DAIS · YOU ARE HERE —</div>
+                </div>
+
+                <aside class="agenda-panel">
+                    <div class="agenda-header">
+                        <span class="agenda-title">Associate Chair's Notes</span>
+                        <span class="agenda-clip">📎</span>
+                    </div>
+                    <ol class="agenda-list" id="agenda-list">
+                        <li class="agenda-placeholder">No motions yet.</li>
+                    </ol>
+
+                    <div class="speakers-panel" id="speakers-panel" hidden>
+                        <div class="speakers-header">
+                            <span>Speakers List</span>
+                            <span class="speakers-motion-label" id="speakers-motion-label"></span>
+                        </div>
+                        <ol class="speakers-list" id="speakers-list"></ol>
+                    </div>
+
+                    <button class="key-toggle-btn" id="key-toggle-btn" aria-expanded="false">
+                        Disruptiveness Key ▾
+                    </button>
+
+                    <div class="key-popup hidden" id="key-popup">
+                        <div class="key-header">
+                            <span>Disruptiveness Key</span>
+                            <span class="key-arrow-up">&#9650; more</span>
+                        </div>
+
+                        <div class="key-rows">
+                            <div class="key-row">
+                                <span class="key-swatch adjourn"></span>
+                                <span class="key-label">Adjourn / Suspend</span>
+                            </div>
+                            <div class="key-row">
+                                <span class="key-swatch unmod"></span>
+                                <span class="key-label">Unmod</span>
+                                <span class="key-hint">longer = more &#8593;</span>
+                            </div>
+                            <div class="key-row">
+                                <span class="key-swatch rr"></span>
+                                <span class="key-label">Round Robin</span>
+                                <span class="key-hint">longer = more &#8593;</span>
+                            </div>
+                            <div class="key-row mod-row">
+                                <span class="key-swatch mod"></span>
+                                <span class="key-label">Mod</span>
+                                <span class="key-hint">more speakers = more &#8593;</span>
+                                <div class="mod-explain">
+                                    <span class="mod-example">e.g. 3 min, 30 sec &#8594; 6 spkrs</span>
+                                </div>
+                            </div>
+                            <div class="key-row">
+                                <span class="key-swatch spklist"></span>
+                                <span class="key-label">Speaker's List</span>
+                            </div>
+                        </div>
+
+                        <div class="key-footer">
+                            <span class="key-tie">tie? &#8594; earlier proposal wins</span>
+                            <span class="key-arrow-down">&#9660; less</span>
+                        </div>
+                    </div>
+                </aside>
+            </div>
+
+            <div class="motions-dais-bar" id="motions-dais-bar">
+                <!-- Populated dynamically by game.js -->
+            </div>
+        </section>
+
+        <!-- PHASE 2 / PHASE 3 END TRANSITION -->
+        <section id="post-motions-screen" class="screen">
+            <h2 class="phase-title">Motion Adopted</h2>
+            <p class="flavor-text" id="post-motions-flavor">
+                Committee will now proceed into caucus.
+            </p>
+            <div class="star-result">
+                <div class="star-row" id="phase2-stars"></div>
+                <p class="mistake-summary" id="phase2-summary"></p>
+            </div>
+            <!-- v12 — button label is set dynamically by configurePostMotionsButton()
+                 in game.js (either "Proceed to Unmods →" after Phase 2 or
+                 "Adjourn & Restart" after Phase 3). -->
+            <button class="big-button" id="restart-btn">Adjourn &amp; Restart</button>
+        </section>
+
+    </main>
+
+    <script src="game.js"></script>
+</body>
+</html>
