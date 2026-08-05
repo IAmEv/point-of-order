@@ -1,6 +1,36 @@
 /* ========================================================
    POINT OF ORDER — A UNCMUNC Chair Simulator
-   style.css — v17
+   style.css — v21
+   v21: Glow/bubble fix (game.js v27).
+        - .leader-guess and .caucus-clickable:hover glows now
+          target .seat-figure (a new wrapper around figure +
+          placard) instead of .delegate-seat directly, so a
+          live .speech-bubble sibling no longer inherits the
+          glow.
+   v20: Bloc focus indicator replaced (game.js v26).
+        - The Carolina Blue .bloc-focused glow was too strong /
+          distracting in playtest. Replaced with .bloc-dimmed:
+          the UNFOCUSED bloc's seats quietly recede (opacity
+          0.55 + grayscale(0.4)) instead of the focused one
+          glowing. A .bloc-dimmed.leader-guess override keeps a
+          guess made in the dimmed bloc legible.
+   v19: Caucus dialogue tuning pass (game.js v25).
+        - Removed .shift-left/.shift-right; overlap bubbles no
+          longer get a positional offset.
+        - Added .delegate-seat.overlap-front (z-index boost so
+          the interrupting bubble reliably renders above the
+          one it's cutting off).
+        - Added .delegate-seat.bloc-focused (Carolina Blue glow
+          on every seat in the hovered bloc) plus a combined
+          .bloc-focused.leader-guess rule so it layers with the
+          gold leader-guess glow instead of overwriting it.
+   v18: Scripted caucus dialogue (game.js v24).
+        - Removed .focus-lock-btn and all its variants; the
+          "Lock focus" control no longer exists.
+        - Added .speech-bubble.overlap-bubble (150ms fade-in,
+          no scale-pop) plus .shift-left/.shift-right, which
+          push a cutoff turn's two simultaneous bubbles apart
+          so they read as two delegates talking over each other.
    v17: Phase 3 Unmoderated Caucus styles.
         - .delegate-seat transitions now include left/top so
           the animate-into-blocs slide actually eases (~600ms).
@@ -345,10 +375,17 @@ html, body {
     cursor: pointer;
 }
 .delegate-seat.caucus-clickable:hover {
-    filter: drop-shadow(0 0 10px rgba(201,162,75,0.55));
     transform: translate(-50%, -50%) scale(1.05);
 }
-.delegate-seat.leader-guess {
+.delegate-seat.caucus-clickable:hover .seat-figure {
+    filter: drop-shadow(0 0 10px rgba(201,162,75,0.55));
+}
+/* v27 — glow targets .seat-figure (figure + placard only), not
+   .delegate-seat, so a live .speech-bubble sibling never inherits it.
+   (filter always composites an element's full rendered subtree, so
+   there's no way to exclude a nested child from an ancestor's filter
+   short of moving it outside that ancestor.) */
+.delegate-seat.leader-guess .seat-figure {
     filter: drop-shadow(0 0 14px rgba(245,197,66,0.9))
             drop-shadow(0 0 6px rgba(201,162,75,0.7));
 }
@@ -1585,52 +1622,37 @@ html, body {
 }
 
 /* ============================================================
-   PHASE 3 — UNMOD CAUCUS (v17)
+   PHASE 3 — UNMOD CAUCUS (v21)
    ============================================================ */
 
-/* Focus-lock buttons: one per bloc, absolutely positioned
-   inside the committee room, well below the delegate rows so
-   their hitboxes never overlap. */
-.focus-lock-btn {
-    position: absolute;
-    bottom: 15%;
-    padding: 0.45rem 0.9rem;
-    font-family: 'Special Elite', monospace;
-    font-size: 0.72rem;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: white;
-    background: var(--carolina-blue-dark);
-    border: 1.5px solid var(--carolina-blue-dark);
-    border-radius: 3px;
-    cursor: pointer;
-    box-shadow: 0 2px 0 rgba(0,0,0,0.35);
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.2s ease, background 0.15s ease,
-                color 0.15s ease, border-color 0.15s ease,
-                transform 0.08s ease;
-    z-index: 20;
+/* Cutoff overlap bubbles (scripted caucus dialogue, v19).
+   The interrupting line fades in (no scale-pop); its seat is
+   bumped above the bubble it's cutting off so it reads as on
+   top regardless of DOM order. No positional offset; both
+   bubbles sit centered on their own seats. */
+.speech-bubble.overlap-bubble {
+    animation: bubble-overlap-in 0.15s ease;
 }
-.focus-lock-btn.bloc-A { left: 18%; }
-.focus-lock-btn.bloc-B { right: 18%; }
-.focus-lock-btn.visible {
-    opacity: 1;
-    pointer-events: auto;
+.delegate-seat.overlap-front {
+    z-index: 600 !important;
 }
-.focus-lock-btn:hover {
-    background: #1c3a68;
+@keyframes bubble-overlap-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
 }
-.focus-lock-btn:active {
-    transform: translateY(1px);
-    box-shadow: 0 1px 0 rgba(0,0,0,0.35);
+
+/* Bloc focus by dimming the OTHER bloc (v20): rather than
+   glowing the focused bloc, the unfocused one quietly recedes
+   (lower opacity + a touch of desaturation), like background
+   noise at a party. Nothing changes on the focused bloc itself,
+   so this never competes with the gold .leader-guess glow.
+   Uses .delegate-seat's existing opacity/filter transitions. */
+.delegate-seat.bloc-dimmed {
+    opacity: 0.55;
+    filter: grayscale(0.4);
 }
-.focus-lock-btn.locked {
-    background: var(--gold);
-    color: var(--ink);
-    border-color: var(--gold);
-    box-shadow: 0 2px 0 rgba(122, 90, 0, 0.5);
-}
-.focus-lock-btn.locked:hover {
-    background: #d5b262;
+.delegate-seat.bloc-dimmed.leader-guess {
+    /* A guess already made in the unfocused bloc should still
+       read clearly, so let its gold glow punch through the dim. */
+    opacity: 0.75;
 }

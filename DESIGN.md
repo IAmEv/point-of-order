@@ -6,8 +6,8 @@
 
 ## 0. Current Versions (Source of Truth)
 
-- `game.js` — **v23**
-- `style.css` — **v17**
+- `game.js` — **v28**
+- `style.css` — **v21**
 - `index.html` — **v12**
 
 When starting a fresh chat: read this doc first, then confirm the version headers in each file match the numbers above. If they don't, flag the mismatch before making changes.
@@ -220,50 +220,47 @@ Two 2×2 huddles, one per side. If a bloc is 3-delegate (absent slacker), a tria
 
 Delegate seats slide from their Phase 2 positions into bloc positions over ~600ms via a CSS `left`/`top` transition (v17 added to `.delegate-seat`). The absent slacker's seat is hidden entirely via `display: none`.
 
-#### Caucus dialogue
+#### Caucus dialogue (v24 — scripted playback)
 
-**One bubble at a time per bloc**, cycling every ~4 real sec (3500ms visible + 500ms gap). Dialogue is **only active for the currently focused bloc**. Nothing runs in the background.
+Each bloc plays exactly **one authored script**, turn by turn, from `unmod_dialogue.md`: 8 scripts total (4 topic buckets × 2 leader variants), ~12 turns each. No randomness in line selection; the weighted-random engine (`pickCaucusLine`) is gone. Dialogue is **only active for the currently focused bloc**. Nothing runs in the background.
 
-**Focus & hover model:**
+**Script selection:** at caucus start, each bloc picks `CAUCUS_CONVOS[topicBucket][bloc.leader === "power" ? "powerLed" : "carolinaLed"]` and starts at `turnIdx = 0`. `TOPIC_BUCKETS` (13 topics → 4 buckets) is unchanged.
+
+**Per-bloc playback state:** `turnIdx` (the most recently displayed line, whether shown normally or as a cutoff overlap), `turnTimer`, `currentBubble`, `overlappingBubble`.
+
+**Cadence (v25):**
+- **Normal turn** (line does not end in `,` or `...`): bubble shows for 2800ms, clears, 400ms gap, next line appears.
+- **Cutoff turn** (line ends in `,` or `...`, and isn't the script's last line): the next line appears alongside the current one at the 1900ms mark, both visible together for 900ms, then the older one clears and the new one continues its own lifecycle from that moment. Chains correctly if the new line is itself a cutoff. No positional offset between the two bubbles; the interrupting bubble's seat gets a temporary z-index boost (cleared once the overlap resolves) so it reliably renders above the one it's cutting off, rather than leaving stacking to DOM order between the two delegates.
+- **Script end:** once `turnIdx` reaches the script's length, the bloc holds silent for the rest of the caucus. No looping.
+- At this cadence, a full 12-line script takes roughly 37 to 38 real seconds of active hover time regardless of leader type; both blocs together need about 75 to 76 seconds. As of v27 the caucus window is a fixed 70 real seconds (see Timer below), which is *less* than the combined 75 to 76 seconds both full scripts need — a player who splits attention evenly between blocs will generally not hear either script all the way to its ending line, and definitely won't hear both in full. That's a known, deliberate tradeoff of shortening the window in v27; revisit if playtesting says it feels too rushed rather than appropriately paced.
+
+**Focus & hover model (v24, glow added v25):**
 - `mousemove` on the committee room reads cursor X to decide hovered bloc (< 50% = A, >= 50% = B). Only the upper 80% of the room counts (below is the dais label).
-- `activeIdx = lockedIdx ?? hoveredIdx`. When `activeIdx` changes, the previous bloc's dialogue is torn down (bubble cleared, timers cancelled) and the new one starts.
-- **Focus-lock buttons**, one per bloc, absolutely positioned inside the room below the delegate rows. Fade in when their bloc is hovered or locked. Clicking a lock button toggles `lockedIdx` for that bloc; clicking the other bloc's lock button transfers the lock. Locked button turns gold and reads "Unlock"; idle reads "Lock focus".
+- Hover changes are debounced 150ms before `hoveredIdx` updates, preventing thrash at the 50% boundary.
+- `activeIdx = hoveredIdx` (no lock concept; the "Lock focus" button was removed entirely).
+- Activating a bloc (first hover or a return hover) waits an additional 200ms "soft hover-in" delay before its first bubble appears, so brief mouse-flickers don't jump-scare a line into view. It also dims the **other** bloc (`.bloc-dimmed`: opacity 0.55, `grayscale(0.4)`), so the focused bloc reads by contrast rather than by glowing itself. (An earlier version glowed the focused bloc in Carolina Blue; that read as too strong and distracting in playtest.) A leader guess already made in the dimmed bloc stays legible via a `.bloc-dimmed.leader-guess` opacity override.
+- **Pausing** (un-hovering the active bloc) immediately hides both `currentBubble` and `overlappingBubble`, un-dims the other bloc, and cancels all pending timers, but leaves `turnIdx` untouched. **Resuming** replays the line at `turnIdx` fresh, full-length, never mid-way through its old display timer — including a line that was only ever shown as a cutoff overlap.
 
-**Delegate clicks are leader guesses only, never focus locks.** Clicking a delegate:
+**Delegate clicks are leader guesses only, never focus changes.** Clicking a delegate:
 - Applies `.leader-guess` glow to that delegate.
 - Removes `.leader-guess` from any prior guess in the same bloc.
 - Sets `bloc.guessIdx = delegateIdx`.
 - Free to change until the caucus ends.
 
-**Bubble selection (`pickCaucusLine`):**
-- First bubble in each bloc is always the leader's opener. Openers:
-  - Power-led Power: *"Alright, {country}'s paper is the working paper. If you have edits, come to us."*
-  - Carolina-led Carolina: *"Okay everyone, {country} wants to hear what each of you is bringing to the table."*
-- After the opener, weighted role pick:
-  - Power-led: Power 55 / Dem-Boy 30 / Carolina 15 / Slacker 0.
-  - Carolina-led: Carolina 40 / Power 30 / Dem-Boy 25 / Slacker 0.
-  - **Slacker is fully silent** in both bloc types.
-- For the chosen role, draw from that role's `agnostic` pool plus the current session's topic bucket. Session-scoped no-reuse per bloc; falls back to the full pool if all lines exhausted.
-- Placeholders substituted: `{country}` (speaker), `{boss}` (speaker.boss or bloc's Power-Del's country as fallback), `{demboyCountry}` (bloc's Dem-Boy's country).
+**Placeholders substituted** (unchanged): `{country}` (speaker), `{boss}` (speaker.boss or bloc's Power-Del's country as fallback), `{demboyCountry}` (bloc's Dem-Boy's country).
 
-**Topic buckets** (`TOPIC_BUCKETS`, 13 topics → 4 buckets):
-- **substance**: funding mechanisms, enforcement measures, sanctions, monitoring frameworks
-- **process**: implementation timeline, definitions, next steps, the working paper
-- **people**: humanitarian concerns, regional cooperation, root causes
-- **opening**: opening statements, bloc positions
+**Slacker never speaks** in any script.
 
-Each role in each bloc-type carries ~3 agnostic lines + 2 per topic bucket. Total authored ~66 lines. Replaying a session on a different topic pulls from a different bucket and feels distinct.
-
-**Role behavior encoded in dialogue:**
+**Role behavior encoded in each script:**
 - Power-led bloc: Power dominates and shoehorns their idea; Dem-Boy meat-rides Power by name; Carolina tries to add ideas and gets cut off mid-sentence.
-- Carolina-led bloc: Carolina names other delegates and protects ideas; Power tries to interrupt and dismiss; Dem-Boy proposes a substantive idea and gets shut down by their own Power-Del boss in the same bloc, then rescued by Carolina.
+- Carolina-led bloc: Carolina names other delegates and protects ideas; Power tries to interrupt and dismiss; Dem-Boy proposes a substantive idea that Carolina champions over Power's pushback.
 
 #### Timer
 
-Reuses `state.p2.speeches` with `caucusMode: true`. Compression rule:
-- First `(N-1)` displayed minutes → **75 real seconds** (`preRate = (N-1)*60/75`).
+Reuses `state.p2.speeches` with `caucusMode: true`. Compression rule (v27):
+- First `(N-1)` displayed minutes → **55 real seconds** (`preRate = (N-1)*60/55`).
 - Last displayed minute → **15 real seconds** (`warnRate = 60/15 = 4`).
-- Total real duration always **90 sec**, regardless of motion length.
+- Total real duration always **70 sec**, regardless of motion length. (Was 90 sec through v26; shortened in v27 — see the dialogue-fit caveat above.)
 
 Threshold overrides:
 - `warnThreshold = 60` (pre → warn transition when displayedSec ≤ 60).
@@ -344,8 +341,8 @@ Single `state` object in `game.js`:
 ### Timer Engine
 Single `setInterval` at 50ms drives both the speech clock and the caucus clock. Per-instance rates (`sp.preRate`, `sp.warnRate`) are set from either `beginSpeech()` (speeches) or `setupCaucusTimer()` (caucus). Thresholds (`sp.warnThreshold`, `sp.lateThreshold`) also configurable per instance.
 
-### Caucus Dialogue Engine (v23)
-Per-bloc `setTimeout` chain drives the 4-sec cadence. `activateBloc(i)` starts the chain; `deactivateBloc(i)` cancels timers and clears any visible bubble. Only the `activeIdx` bloc runs. Line selection is weighted by role, session-scoped no-reuse via `bloc.usedLines: Set`.
+### Caucus Dialogue Engine (v24)
+Per-bloc `setTimeout` chain drives scripted playback from `CAUCUS_CONVOS`. `activateBloc(i)` starts the chain (after a 200ms soft hover-in delay); `deactivateBloc(i)` cancels timers and clears any visible bubble(s), immediately, preserving `turnIdx`. Only the `activeIdx` bloc runs. `displayTurn` shows a line; `scheduleLifecycle` drives normal vs. cutoff-overlap timing per turn (see §8.5). No line selection, no randomness, no per-bloc no-reuse set; each bloc plays its one assigned script start to finish.
 
 ### Asset Swap
 See §4. `DELEGATE_ART`, `GAVEL_ART`, `GAVEL_SOUND` are the sole points of change when assets are added.
@@ -380,6 +377,27 @@ None.
 
 ## 13. Change Log (Major Milestones)
 
+- **v28 (motions-close button restyled; dropped on-time 10-sec speech flash, current)**
+    - The `ready_to_vote` stage's button (shared by Phase 2 and Phase 3's motions screen, and expected to carry into Phases 4-5) changed from blue "Move to vote on the motions →" to gold/italic "That is all the motions we will be accepting at this time." — dropping the `proceed` class puts it under the existing chair-dialogue button styling used elsewhere (e.g. the dilatory ruling prompt, the favor/oppose vote calls). Handler and voting flow unchanged.
+    - `onGavelClick`'s on-time warn-phase flash ("The chair recognizes 10 seconds remaining.") no longer fires for speeches. The late-warning flash and the caucus's "one minute remaining" flash are unchanged.
+- **v27 (glow/bubble fix + shorter caucus ramp)**
+    - Speech bubbles no longer inherit a glowing delegate's drop-shadow. `renderCommitteeRoom` now wraps figure + placard in a `.seat-figure` div; `.speech-bubble` is appended as a sibling of it, not a descendant, so it sits outside any filter applied to `.seat-figure`. `.leader-guess` and `.caucus-clickable:hover` glows retargeted accordingly. (The same underlying quirk exists in Roll Call's `.active` and Phase 2's `.awaiting-recognition`; left as-is since it wasn't reported broken there.)
+    - Confirmed already in place from v26: a leader guess made in the dimmed (unfocused) bloc reads less dim than its bloc-mates, via `.bloc-dimmed.leader-guess { opacity: 0.75; }`.
+    - `CAUCUS_PRE_REAL_SEC` 75 → 55; `CAUCUS_WARN_REAL_SEC` unchanged at 15. Total caucus real-time window 90 sec → 70 sec. Note: this is now *less* than the ~75 to 76 seconds both full scripts need combined (see §8.5) — a deliberate tradeoff, not an oversight.
+- **v26 (bloc focus indicator replaced)** — The v25 Carolina Blue `.bloc-focused` glow read as too strong/distracting in playtest. Replaced with `.bloc-dimmed`: the unfocused bloc's seats recede (opacity 0.55, `grayscale(0.4)`) instead of the focused one glowing. Nothing changes on the focused bloc itself, so this never competes with the gold leader-guess glow; a `.bloc-dimmed.leader-guess` override keeps a guess in the dimmed bloc legible.
+- **v25 (caucus dialogue tuning)** — Playtest pass on the v24 scripted engine.
+    - Normal turn cadence sped up: 3500ms visible / 500ms gap -> 2800ms / 400ms.
+    - Cutoff overlap point moved earlier: 3000ms -> 1900ms into the cut-off line's display.
+    - Removed the shift-left/shift-right positional offset on overlap bubbles; replaced with a z-index boost (`.overlap-front`) on the interrupting delegate's seat, cleared once the overlap resolves, so the incoming bubble always renders on top regardless of DOM order.
+    - Added a whole-bloc Carolina Blue focus glow (`.bloc-focused`) on every seat in the hovered bloc, layered with (not overwritten by) the individual gold leader-guess glow via a combined CSS rule.
+    - Total 90-second caucus window left unchanged; verified the new cadence fits both scripts comfortably within it.
+- **v24 (scripted caucus dialogue)** — Replaced the weighted-random dialogue engine with authored scripted playback.
+    - `CAUCUS_LINES` removed; new `CAUCUS_CONVOS` holds 8 authored ~12-turn scripts (4 topic buckets × 2 leader variants), transcribed from `unmod_dialogue.md`.
+    - Each bloc plays exactly one script via `turnIdx`; no per-bloc no-reuse set, no weighted role odds.
+    - Cutoff lines (ending in `,` or `...`) trigger an overlap turn: the next line appears alongside the current one, both visible briefly, pushed apart visually, before the older one clears.
+    - Removed the "Lock focus" button entirely; focus is now purely hover-based (`activeIdx = hoveredIdx`), with a 150ms hover debounce plus a 200ms soft hover-in delay before a newly active bloc's first line appears.
+    - Pausing a bloc (un-hovering) immediately hides any visible bubble(s) and preserves `turnIdx`; resuming always replays that line fresh, never mid-timer.
+    - Leader-guess clicks, bloc assignment/animation, the caucus timer/gavel, and debrief scoring are unchanged.
 - **v1–v6** — Title, briefing, roll call, seating, empty chairs, `DELEGATE_ART` architecture, "here" correction.
 - **v7–v11 (motions era)** — Phase 2 motions loop, dais controls, agenda, dilatory rulings, voting, disruptiveness ranking, Key popup, guaranteed-error system.
 - **v7–v10 (speaker sel)** — Post-vote Speaker Selection sub-phase.
@@ -417,7 +435,6 @@ None.
 - **Slacker silence** — currently 0% weight. If it reads as broken, add a single "Pass." or shrug line at ~3% weight.
 - **Absent-slacker Power-bloc rule** — encoded as spec but should be reviewed with a play-tester who does not know the rule.
 - **Late-warning threshold in caucus (48 sec)** — matches speech ratio (20% of warn window). Tune after play-testing.
-- **Dialogue line variety** — ~11 lines per bloc-type over ~22 bubbles = ~2× cycling. Watch for repetition fatigue.
 - **Bloc leader-guess persistence into Phase 5** — needed once Phase 5 exists. Currently `bloc.guessIdx` is scored at Phase 3 debrief and then discarded.
 - **Global session summary** — deferred until Phases 4 & 5 exist.
 - **Round Robin total-speaker rule** — confirmed as "all present, clockwise from proposer" (v18). Play-test.

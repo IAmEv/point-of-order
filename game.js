@@ -1,5 +1,114 @@
 /* ==========================================================
    POINT OF ORDER — Game Logic
+   v28: Motions-close button restyled as chair dialogue; dropped
+        the on-time 10-sec speech-warning flash.
+        - "ready_to_vote" stage's button (shared by Phase 2 and
+          Phase 3, will carry into Phases 4-5 via the same
+          motions screen) changed from the blue "Move to vote on
+          the motions →" (proceed-styled) to the gold/italic
+          "That is all the motions we will be accepting at this
+          time." (default chair-prompt-btn styling, i.e. no
+          "proceed" class) — matches the existing convention
+          where non-proceed dais buttons read as spoken chair
+          dialogue. Handler and voting flow unchanged.
+        - onGavelClick: the on-time warn-phase flash "The chair
+          recognizes 10 seconds remaining." no longer fires for
+          speeches. The late-warning flash ("Warning given
+          late.") and the caucus's on-time flash ("The chair
+          recognizes one minute remaining.") are unchanged.
+   v27: Glow/bubble fix + caucus real-time ramp shortened
+        (style.css v21).
+        - Speech bubbles no longer inherit a delegate's glow.
+          renderCommitteeRoom now wraps figure+placard in a
+          .seat-figure div; the .speech-bubble appended later by
+          showSpeechBubble is a sibling of .seat-figure, not a
+          descendant, so it sits outside any filter applied to
+          .seat-figure. (CSS filter always composites an
+          element's whole rendered subtree; a child can't opt
+          out via its own filter:none.) .leader-guess and
+          .caucus-clickable:hover glows retargeted to
+          ".seat-figure" accordingly. Scoped to Phase 3's glow
+          states only; Roll Call's .active and Phase 2's
+          .awaiting-recognition have the same underlying quirk
+          but were left untouched (not reported broken, out of
+          scope for this pass).
+        - CAUCUS_PRE_REAL_SEC 75 -> 55 (first (N-1) displayed
+          minutes now take 55 real sec instead of 75).
+          CAUCUS_WARN_REAL_SEC unchanged at 15. Total caucus
+          real-time window: 90 sec -> 70 sec.
+   v26: Bloc focus indicator replaced (style.css v20).
+        - The Carolina Blue .bloc-focused glow read as too strong
+          and distracting in playtest. Removed setBlocFocusGlow.
+        - New setOtherBlocDim(activeIdx, on): dims the UNFOCUSED
+          bloc (.bloc-dimmed: opacity 0.55, grayscale(0.4))
+          instead of glowing the focused one. Since there are
+          only two blocs, activateBloc(i) dims bloc 1-i and
+          deactivateBloc(i) undims it; switching directly from
+          one bloc to the other is a synchronous dim/undim pair
+          with no visible flicker.
+   v25: Caucus dialogue tuning pass (style.css v19).
+        - CAUCUS_BUBBLE_VISIBLE_MS 3500 -> 2800, CAUCUS_BUBBLE_GAP_MS
+          500 -> 400 (normal turns cycle faster).
+        - CAUCUS_CUTOFF_OVERLAP_MS 3000 -> 1900 (the interrupting
+          line appears sooner into the cut-off line's display).
+        - Removed the shift-left/shift-right positional offset on
+          overlap bubbles per playtest feedback; instead the
+          interrupting bubble's seat gets a z-index boost
+          (.overlap-front, cleared once the overlap resolves) so
+          it reliably renders on top of the bubble it interrupts,
+          regardless of DOM order between the two delegates' seats.
+        - New setBlocFocusGlow(idx, on): applies/removes
+          .bloc-focused on every seat in a bloc when it becomes
+          active/inactive, giving the whole hovered bloc a
+          Carolina Blue glow distinct from the individual gold
+          .leader-guess glow (both layer via a combined CSS rule
+          when the guessed delegate is in the focused bloc).
+        - Total caucus real-time window (90 sec) left unchanged;
+          at the new cadence both scripts fit comfortably inside
+          it with room to spare (previously it was borderline
+          tight at the old, slower cadence).
+   v24: Scripted caucus dialogue replaces weighted-random engine.
+        - CAUCUS_LINES removed. New CAUCUS_CONVOS holds 8
+          authored ~12-turn scripts (4 topic buckets x 2 leader
+          variants), each an ordered [{role, line}, ...] array
+          transcribed from unmod_dialogue.md. TOPIC_BUCKETS
+          unchanged.
+        - Each bloc picks its one script at caucus start:
+          CAUCUS_CONVOS[bucket][leader === "power" ? "powerLed"
+          : "carolinaLed"]. Removed bloc.openerUsed/usedLines;
+          removed pickCaucusLine/drawCaucusLineForRole.
+        - Per-bloc playback state: bloc.turnIdx (next/most-
+          recently-shown line), bloc.turnTimer, bloc.currentBubble,
+          bloc.overlappingBubble. turnIdx always reflects whichever
+          line most recently appeared (including one that only
+          appeared as a cutoff overlap), so pausing mid-overlap and
+          resuming replays that interrupting line fresh, full-length.
+        - Cutoff detection: a line ending in "," or "..." (and not
+          the script's last line) triggers an overlap turn instead
+          of a normal one. Normal turn: visible 3500ms, 500ms gap,
+          advance. Cutoff turn: next line appears alongside the
+          current one at the 3000ms mark (both visible, pushed
+          apart so it reads as two people talking over each other),
+          current one clears 500ms later, the new line continues
+          its own lifecycle from that moment (chains correctly if
+          it is itself a cutoff).
+        - Script end: once turnIdx reaches script.length, the bloc
+          holds silent for the rest of the caucus. No looping.
+        - Removed the "Lock focus" button entirely (createFocusLockButtons,
+          removeFocusLockButtons, updateLockButtons, toggleFocusLock,
+          all lockedIdx state/CSS). Focus is now purely hover-based:
+          activeIdx = hoveredIdx.
+        - Hover changes are debounced 150ms before activeIdx updates
+          (prevents thrash at the 50% room boundary). On top of that,
+          activating a bloc (first hover or resume) waits an extra
+          200ms "soft hover-in" before its first bubble appears, so
+          brief mouse-flickers do not jump-scare a line into view.
+        - New CSS: .speech-bubble.overlap-bubble (150ms fade-in,
+          replaces bubble-pop) plus .shift-left/.shift-right to push
+          the two overlapping bubbles apart. Removed .focus-lock-btn
+          rules entirely.
+        - Leader-guess clicks, bloc assignment/animation, the caucus
+          timer/gavel, and debrief scoring are all unchanged.
    v23: Phase 3 Unmod Caucus — full loop built.
         - generateCommittee(): each Power-Del is now paired
           with exactly one Dem-Boy (no overlap). Invisible
@@ -171,12 +280,15 @@ const GAVEL_DOWN_SPAM_WINDOW  = 800;
 /* ==========================================================
    CAUCUS TUNING (v23)
 ========================================================== */
-const CAUCUS_PRE_REAL_SEC   = 75;    // first (N-1) displayed minutes
+const CAUCUS_PRE_REAL_SEC   = 55;    // first (N-1) displayed minutes
 const CAUCUS_WARN_REAL_SEC  = 15;    // last displayed minute
 const CAUCUS_WARN_THRESHOLD = 60;    // displayedSec at pre → warn switch
 const CAUCUS_LATE_THRESHOLD = 48;    // displayedSec at on-time → late
-const CAUCUS_BUBBLE_VISIBLE_MS = 3500;
-const CAUCUS_BUBBLE_GAP_MS     = 500;
+const CAUCUS_BUBBLE_VISIBLE_MS  = 2800;  // normal turn: how long a line stays up
+const CAUCUS_BUBBLE_GAP_MS      = 400;   // normal turn: silence before the next line
+const CAUCUS_CUTOFF_OVERLAP_MS  = 1900;  // cutoff turn: when the interrupting line appears
+const CAUCUS_HOVER_DEBOUNCE_MS  = 150;   // hover must persist this long before activeIdx changes
+const CAUCUS_HOVER_IN_DELAY_MS  = 200;   // soft delay before a newly-active bloc's first bubble appears
 
 // ---------- DATA POOLS ----------
 const COMMITTEES = [
@@ -264,160 +376,131 @@ const SPEECH_LINES = {
 };
 
 /* ==========================================================
-   CAUCUS LINES (v23)
-   Session-scoped no-reuse per bloc.
-   No em-dashes; commas or hyphens only in player-facing text.
+   CAUCUS CONVOS (v24)
+   Authored, scripted conversations transcribed from
+   unmod_dialogue.md. One script per {bucket, leader} pair,
+   played back turn by turn. No em-dashes.
 ========================================================== */
-const CAUCUS_LINES = {
-    "power-led": {
-        power: {
-            opener: [
-                "Alright, {country}'s paper is the working paper. If you have edits, come to us.",
-            ],
-            agnostic: [
-                "{country} already has the framework drafted. We are not starting from scratch.",
-                "That is a fine thought, but it does not fit what {country} is proposing.",
-                "Look, if you want your language in, it runs through {country} first.",
-                "Let's not waste time. {country}'s draft is the starting point.",
-            ],
-            substance: [
-                "{country}'s enforcement language is the only serious mechanism on the table.",
-                "The numbers in {country}'s draft are non-negotiable.",
-            ],
-            process: [
-                "{country} has the operative clause outline ready. We are not rewriting it.",
-                "The timeline in {country}'s paper is the timeline. Move on.",
-            ],
-            people: [
-                "{country}'s humanitarian framing is the only one that captures the full scope.",
-                "Regional concerns are already covered in {country}'s draft.",
-            ],
-            opening: [
-                "{country}'s opening position is the reference point for this bloc.",
-                "The bloc position starts with {country}'s statement, not open discussion.",
-            ],
-        },
-        demboy: {
-            agnostic: [
-                "{boss} makes a great point. We should absolutely go with that.",
-                "Yes, exactly what {boss} just said.",
-                "{country} agrees completely with {boss} on this.",
-            ],
-            substance: [
-                "{boss}'s framework is exactly what this committee needs.",
-                "The numbers {boss} laid out are perfect.",
-            ],
-            process: [
-                "{boss}'s outline is clean. We should just go with it.",
-                "The timeline {boss} proposed is the right call.",
-            ],
-            people: [
-                "{boss}'s humanitarian language really captures the issue.",
-                "{boss}'s regional framing is spot on.",
-            ],
-            opening: [
-                "{boss}'s opening was strong. We should build from there.",
-                "The bloc position {boss} outlined is exactly right.",
-            ],
-        },
-        carolina: {
-            agnostic: [
-                "What if we also brought in some of the ideas from the other bloc?",
-                "{country} thinks there might be room to include, sorry, never mind.",
-                "Could we maybe add a clause on, oh, you were still going.",
-            ],
-            substance: [
-                "{country} had a thought on the enforcement piece, if there is time.",
-                "Maybe a compromise on the funding side would, actually never mind.",
-            ],
-            process: [
-                "Could we possibly leave a section open for other, no, that is fine.",
-                "{country} was thinking on the timeline, we could, sorry.",
-            ],
-            people: [
-                "{country} thinks a humanitarian addendum could really, hm, okay.",
-                "Perhaps a regional cooperation piece would help, sorry to interrupt.",
-            ],
-            opening: [
-                "Could we open with something more inclusive of everyone's, no, go ahead.",
-                "{country} had a thought on the framing, but it can wait.",
-            ],
-        },
+const CAUCUS_CONVOS = {
+    substance: {
+        powerLed: [
+            { role: "power",    line: "So {country} already wrote up what we should do. Every country pays two percent of their GDP, no exceptions." },
+            { role: "demboy",   line: "Yeah, {boss} showed me the paper right before this. It is really solid." },
+            { role: "carolina", line: "Wait, {country} was thinking maybe smaller countries could pay less," },
+            { role: "power",    line: "No. Two percent for everyone. If we start giving exceptions the whole thing falls apart." },
+            { role: "demboy",   line: "{boss} is right, exceptions kill the whole point." },
+            { role: "carolina", line: "But if some countries literally cannot afford it they will just say no," },
+            { role: "power",    line: "Then they say no. We are not going to weaken this because some people cannot keep up." },
+            { role: "demboy",   line: "Exactly. If we lower the number, {boss}'s whole plan gets watered down." },
+            { role: "carolina", line: "Could we at least add something about helping countries that struggle to pay," },
+            { role: "power",    line: "That is a separate conversation. Right now we are locking in the two percent." },
+            { role: "demboy",   line: "{boss} already has the wording done. We just need everyone to sign on." },
+            { role: "power",    line: "Send it around. We are done debating this." },
+        ],
+        carolinaLed: [
+            { role: "carolina", line: "Okay, before we write anything down, {country} wants to hear what everyone thinks the GDP contribution should be." },
+            { role: "power",    line: "Easy. Two percent across the board. That is fair." },
+            { role: "carolina", line: "That is one idea. {demboyCountry}, you were saying something earlier?" },
+            { role: "demboy",   line: "Uh, yeah. {country} was thinking maybe it should depend on how much money a country actually has..." },
+            { role: "power",    line: "That is way too complicated. Just pick a number and move on." },
+            { role: "carolina", line: "Hold on, let {demboyCountry} finish. That could actually work." },
+            { role: "demboy",   line: "So like, richer countries pay more, poorer countries pay less. Same total in the end." },
+            { role: "power",    line: "That is going to take forever to figure out. Two percent is simple." },
+            { role: "carolina", line: "It is a little more work but it is way more fair. {demboyCountry} is right." },
+            { role: "power",    line: "Fine, but there has to be a floor. No one pays less than half a percent." },
+            { role: "carolina", line: "Deal. {demboyCountry}, can you write up the sliding scale while {boss} sets the floor?" },
+            { role: "demboy",   line: "Yeah, {country} can do that. Give me a minute." },
+        ],
     },
-    "carolina-led": {
-        carolina: {
-            opener: [
-                "Okay everyone, {country} wants to hear what each of you is bringing to the table.",
-            ],
-            agnostic: [
-                "That is a great point. Let's make sure it lands in the paper.",
-                "{country} loves how everyone here is contributing.",
-                "Hold on, let's give everyone a chance to speak.",
-                "We can absolutely find a way to include that idea.",
-            ],
-            substance: [
-                "{country} thinks the enforcement piece needs input from everyone, not just one voice.",
-                "Let's build the funding structure from what each delegate brings.",
-            ],
-            process: [
-                "The timeline should reflect everyone's priorities, not just the loudest.",
-                "{country} wants this working paper to have every bloc member's fingerprints on it.",
-            ],
-            people: [
-                "The humanitarian angle is where this bloc can really unite.",
-                "Regional cooperation only works if every delegate here feels heard.",
-            ],
-            opening: [
-                "{country} thinks the opening should reflect all of us.",
-                "Let's frame the bloc position around what unites us.",
-            ],
-        },
-        power: {
-            agnostic: [
-                "That is a nice thought, but {country} has a better version.",
-                "Let me stop you there. {country} already has the answer.",
-                "Fine, but {country}'s language stays in the operative clauses.",
-            ],
-            substance: [
-                "{country}'s enforcement draft is stronger. We should just use it.",
-                "Cut that. {country}'s funding numbers are cleaner.",
-            ],
-            process: [
-                "{country}'s timeline is tighter. We go with that.",
-                "Skip the workshopping. {country} has the outline ready.",
-            ],
-            people: [
-                "{country}'s humanitarian framing is more precise.",
-                "The regional piece is fine, but {country}'s wording is better.",
-            ],
-            opening: [
-                "The opening should lead with {country}'s statement, obviously.",
-                "{country}'s framing is the strongest. Everyone else builds off it.",
-            ],
-        },
-        demboy: {
-            agnostic: [
-                "{country} was actually thinking, what about a tiered approach?",
-                "So, {country} has a small idea, if that is okay.",
-                "{country} might have something. It is probably not great, but,",
-            ],
-            substance: [
-                "{country} was thinking a graduated enforcement structure could work here.",
-                "What if the funding scaled based on GDP? {country} had that thought.",
-            ],
-            process: [
-                "{country} was thinking a phased timeline might satisfy everyone.",
-                "What about breaking the working paper into modules? {country}'s idea.",
-            ],
-            people: [
-                "{country} was drafting a humanitarian sub-clause, actually.",
-                "A regional cooperation annex could work. {country} sketched something.",
-            ],
-            opening: [
-                "{country} had a draft opening line, if the bloc wants to hear it.",
-                "{country} was thinking the position statement could open with impact.",
-            ],
-        },
+    process: {
+        powerLed: [
+            { role: "power",    line: "Alright, here's how it goes. Implementation starts in six months, everyone has to be on board within a year." },
+            { role: "demboy",   line: "{boss}'s timeline makes sense. Fast but doable." },
+            { role: "carolina", line: "Six months feels really fast, {country} was thinking maybe a year to start," },
+            { role: "power",    line: "A year is too slow. Half the countries will lose interest by then." },
+            { role: "demboy",   line: "Yeah, if we wait too long people just move on." },
+            { role: "carolina", line: "But some smaller countries need time to actually set things up on their end..." },
+            { role: "power",    line: "That is their problem. We set the deadline, they figure it out." },
+            { role: "demboy",   line: "Exactly what {boss} said. If we let people stall nothing happens." },
+            { role: "carolina", line: "What about a check-in halfway through, just to see where everyone is..." },
+            { role: "power",    line: "No check-ins. Check-ins are how people push back the real deadline." },
+            { role: "demboy",   line: "{boss} is right, check-ins turn into extensions." },
+            { role: "power",    line: "Six months to start, one year to be done. Everyone gets the same clock." },
+        ],
+        carolinaLed: [
+            { role: "carolina", line: "So we need to figure out when this idea actually happens. What are people thinking?" },
+            { role: "power",    line: "Six months to start. One year to finish. Simple." },
+            { role: "carolina", line: "That is fast. {demboyCountry}, you had a different idea, right?" },
+            { role: "demboy",   line: "Um, yeah. {country} was thinking we should do it in steps, like the easy stuff first..." },
+            { role: "power",    line: "Steps just means it drags on forever." },
+            { role: "carolina", line: "Not really. If we do the simple parts first we can actually get something done early. Keep going, {demboyCountry}." },
+            { role: "demboy",   line: "So like, the first few months is the basics, and then the harder stuff comes later once people trust it." },
+            { role: "power",    line: "That is a nice idea but it is not realistic." },
+            { role: "carolina", line: "It is realistic if we plan it out. {demboyCountry}'s way lets people see it working before they commit to the hard parts." },
+            { role: "power",    line: "Okay, fine, but the whole thing still has to be done in a year." },
+            { role: "carolina", line: "That works. {demboyCountry} maps out the phases, {boss} keeps the one year deadline." },
+            { role: "demboy",   line: "Cool. {country} will sketch something out." },
+        ],
+    },
+    people: {
+        powerLed: [
+            { role: "power",    line: "So {country} already put together the whole plan for who this helps and how. It is all on this paper." },
+            { role: "demboy",   line: "Yeah, {boss} already showed me. It covers everyone who actually needs help." },
+            { role: "carolina", line: "Wait, {country} was wondering if we could talk to some of the people who are actually affected..." },
+            { role: "power",    line: "No need. {country} already looked into what they need. It is in the plan." },
+            { role: "demboy",   line: "Right, {boss} and I did the research. We do not need to redo it." },
+            { role: "carolina", line: "But if we heard from them directly it might change what we..." },
+            { role: "power",    line: "It will not. The plan is done. We are not opening it back up." },
+            { role: "demboy",   line: "Exactly. {boss} already thought through every angle on this." },
+            { role: "carolina", line: "Could we at least add a line saying we listened to local groups..." },
+            { role: "power",    line: "No, because we did not. {country} is not putting fake stuff in the plan." },
+            { role: "demboy",   line: "{boss} is right, we can't say we did something we did not do." },
+            { role: "power",    line: "The plan stands as {country} wrote it. Send it around." },
+        ],
+        carolinaLed: [
+            { role: "carolina", line: "Okay, this whole thing is about helping real people, so {country} wants to talk about who this is for." },
+            { role: "power",    line: "It is for everyone affected. {country} has that covered." },
+            { role: "carolina", line: "That is broad. {demboyCountry}, you previously mentioned something more specific?" },
+            { role: "demboy",   line: "Yeah, so {country} was thinking we should also try to fix why this is happening in the first place..." },
+            { role: "power",    line: "That is way outside what we are supposed to be doing." },
+            { role: "carolina", line: "No, that is actually the most important part. Keep going, {demboyCountry}." },
+            { role: "demboy",   line: "Like, if we just help people now but do not fix the actual cause, we are back here in five years." },
+            { role: "power",    line: "That is not our job. Our job is to respond, not to solve everything." },
+            { role: "carolina", line: "Responding without fixing the cause is why nothing ever changes. {demboyCountry} nailed it." },
+            { role: "power",    line: "Fine, but keep it short. Two sentences max on the cause part." },
+            { role: "carolina", line: "Two sentences is enough. {demboyCountry} writes the cause part, {boss} handles the response." },
+            { role: "demboy",   line: "Thanks. {country} will keep it tight." },
+        ],
+    },
+    opening: {
+        powerLed: [
+            { role: "power",    line: "When we present this, we lead with {country}'s main point. That is the strongest thing we have." },
+            { role: "demboy",   line: "Yeah, {boss}'s point is definitely the strongest." },
+            { role: "carolina", line: "Could we open with something that mentions everyone's ideas..." },
+            { role: "power",    line: "No, we need one clear message. Not a list of everyone's names." },
+            { role: "demboy",   line: "Right, one message hits harder than five." },
+            { role: "carolina", line: "But if we include everyone more people will actually back us up," },
+            { role: "power",    line: "People will back us up because we are right, not because we listed them." },
+            { role: "demboy",   line: "{boss} is right, the message matters more than the names." },
+            { role: "carolina", line: "Even just mentioning that we worked together on this..." },
+            { role: "power",    line: "We are wasting time. {country}'s point goes first, everything else comes after." },
+            { role: "demboy",   line: "That is how it should go. Strong opener, then the details." },
+            { role: "power",    line: "Done. Let's move on." },
+        ],
+        carolinaLed: [
+            { role: "carolina", line: "So when we get up there, what do we want everyone else to hear first?" },
+            { role: "power",    line: "{country}'s main point. It is the clearest thing we have." },
+            { role: "carolina", line: "That is a strong point. {demboyCountry}, what did you want to lead with?" },
+            { role: "demboy",   line: "Uh, {country} was thinking we should open with the root cause of the problem, before jumping to what we want to do," },
+            { role: "power",    line: "Everyone already knows the problem. We should skip to the solution." },
+            { role: "carolina", line: "Not everyone gets why it matters though. {demboyCountry}'s way makes people actually care first." },
+            { role: "demboy",   line: "Yeah, like a story or an example, so it feels real before we ask for anything." },
+            { role: "power",    line: "Stories are a waste of time. Just say what we want." },
+            { role: "carolina", line: "The story is what makes people want to help. {demboyCountry} is thinking about this the right way." },
+            { role: "power",    line: "Fine, but keep the story short so everyone can hear my idea faster." },
+            { role: "carolina", line: "Close enough. {demboyCountry} writes the opening story, {boss} follows up with the ask." },
+            { role: "demboy",   line: "Cool. {country} has an idea already." },
+        ],
     },
 };
 
@@ -691,9 +774,16 @@ function renderCommitteeRoom(containerId = "committee-room") {
 
         const figureHTML = del.present ? buildDelegateArt(del.personality) : buildEmptyChair();
         const dimmed = del.present ? "" : " style='opacity:0.55'";
+        // v27 — figure + placard live in .seat-figure so glow filters can
+        // target it specifically; a later-appended .speech-bubble is a
+        // sibling of .seat-figure, not a descendant, so it never inherits
+        // the glow (CSS filter always composites an element's full
+        // subtree, so there is no way to exclude a nested child from it).
         seat.innerHTML = `
-            ${figureHTML}
-            <div class="placard"${dimmed}>${del.country}</div>
+            <div class="seat-figure">
+                ${figureHTML}
+                <div class="placard"${dimmed}>${del.country}</div>
+            </div>
         `;
 
         if (!del.present) seat.classList.add("empty-chair");
@@ -1065,7 +1155,11 @@ function renderMotionsDais() {
             break;
         }
         case "ready_to_vote": {
-            const btn = daisButton(`Move to vote on the motions →`, "proceed");
+            // v28 — chair-dialogue phrasing, styled gold like the other
+            // spoken-line prompts (no "proceed" class). Same stage/handler
+            // in both Phase 2 and Phase 3; will carry into Phases 4-5 too
+            // since they reuse this same motions screen.
+            const btn = daisButton(`That is all the motions we will be accepting at this time.`);
             btn.addEventListener("click", () => {
                 p2.stage = "selecting_vote";
                 clearAllBubbles();
@@ -2344,10 +2438,14 @@ function onGavelClick() {
         const isLate = sp.displayedSec <= lateThreshold;
         if (sp.warning == null) sp.warning = isLate ? "late" : "on-time";
         sp.warningClicked = true;
-        const onTimeMsg = sp.caucusMode
-            ? "The chair recognizes one minute remaining."
-            : "The chair recognizes 10 seconds remaining.";
-        flashDaisMessage(isLate ? "Warning given late." : onTimeMsg);
+        // v28 — the on-time "chair recognizes 10 seconds remaining" flash
+        // was removed for speeches (redundant with the gavel/timer UI
+        // itself); the caucus's one-minute counterpart stays.
+        if (isLate) {
+            flashDaisMessage("Warning given late.");
+        } else if (sp.caucusMode) {
+            flashDaisMessage("The chair recognizes one minute remaining.");
+        }
         spawnThud(1);
         playThud();
         const btn = document.getElementById("gavel-btn");
@@ -2556,26 +2654,33 @@ function startUnmodCaucus(motion) {
     const blocs = assignBlocs();
     const topicLong = (p2.priorTopic && p2.priorTopic.long) || "";
     const bucket = TOPIC_BUCKETS[topicLong] || "substance";
+    blocs.forEach(bloc => {
+        const key = bloc.leader === "power" ? "powerLed" : "carolinaLed";
+        bloc.script = CAUCUS_CONVOS[bucket][key];
+        bloc.turnIdx = 0;
+        bloc.turnTimer = null;
+        bloc.currentBubble = null;
+        bloc.overlappingBubble = null;
+    });
     p2.caucus = {
         blocs,
         motion,
         topicBucket: bucket,
         hoveredIdx: null,
-        lockedIdx: null,
         activeIdx: null,
         _mouseHandlers: null,
+        _pendingHoverRaw: null,
+        _hoverDebounceTimer: null,
     };
 
     animateIntoBlocs(blocs);
     attachCaucusHoverListeners();
     attachCaucusDelegateClickHandlers();
-    createFocusLockButtons();
 
     setupCaucusTimer(motion);
 
     updateMotionsInstructions(
-        `Hover a bloc to eavesdrop. Click <em>Lock focus</em> to hold it. ` +
-        `Click a delegate to guess that bloc's leader.`
+        `Hover a bloc to eavesdrop. Click a delegate to guess that bloc's leader.`
     );
     renderMotionsDais();
 }
@@ -2618,8 +2723,6 @@ function assignBlocs() {
         carolina: cA,
         slacker: sA,
         delegates: [pA, dA, cA, sA].filter(d => d && d.present),
-        openerUsed: false,
-        usedLines: new Set(),
         guessIdx: null,
     };
     const blocB = {
@@ -2630,8 +2733,6 @@ function assignBlocs() {
         carolina: cB,
         slacker: sB,
         delegates: [pB, dB, cB, sB].filter(d => d && d.present),
-        openerUsed: false,
-        usedLines: new Set(),
         guessIdx: null,
     };
     return [blocA, blocB];
@@ -2668,9 +2769,19 @@ function attachCaucusHoverListeners() {
     const p2 = state.p2;
     const room = document.getElementById("committee-room-p2");
     if (!room) return;
+    const c = p2.caucus;
+
+    const applyHover = (idx) => {
+        if (idx === c._pendingHoverRaw) return;
+        c._pendingHoverRaw = idx;
+        if (c._hoverDebounceTimer) clearTimeout(c._hoverDebounceTimer);
+        c._hoverDebounceTimer = setTimeout(() => {
+            c._hoverDebounceTimer = null;
+            setHoveredBloc(idx);
+        }, CAUCUS_HOVER_DEBOUNCE_MS);
+    };
 
     const onMove = (e) => {
-        if (p2.caucus.lockedIdx != null) return;
         const rect = room.getBoundingClientRect();
         const x = (e.clientX - rect.left) / rect.width;
         const y = (e.clientY - rect.top) / rect.height;
@@ -2678,12 +2789,10 @@ function attachCaucusHoverListeners() {
         // (Below 80% is the dais label area.)
         let idx = null;
         if (y < 0.8) idx = x < 0.5 ? 0 : 1;
-        setHoveredBloc(idx);
+        applyHover(idx);
     };
-    const onLeave = () => {
-        if (p2.caucus.lockedIdx != null) return;
-        setHoveredBloc(null);
-    };
+    const onLeave = () => applyHover(null);
+
     room.addEventListener("mousemove", onMove);
     room.addEventListener("mouseleave", onLeave);
     p2.caucus._mouseHandlers = { onMove, onLeave, room };
@@ -2695,6 +2804,10 @@ function detachCaucusHoverListeners() {
     const { onMove, onLeave, room } = p2.caucus._mouseHandlers;
     room.removeEventListener("mousemove", onMove);
     room.removeEventListener("mouseleave", onLeave);
+    if (p2.caucus._hoverDebounceTimer) {
+        clearTimeout(p2.caucus._hoverDebounceTimer);
+        p2.caucus._hoverDebounceTimer = null;
+    }
     p2.caucus._mouseHandlers = null;
 }
 
@@ -2704,62 +2817,15 @@ function setHoveredBloc(idx) {
     if (c.hoveredIdx === idx) return;
     c.hoveredIdx = idx;
     recomputeActiveBloc();
-    updateLockButtons();
 }
 
 function recomputeActiveBloc() {
     const c = state.p2.caucus;
-    const next = c.lockedIdx != null ? c.lockedIdx : c.hoveredIdx;
+    const next = c.hoveredIdx;
     if (next === c.activeIdx) return;
     if (c.activeIdx != null) deactivateBloc(c.activeIdx);
     c.activeIdx = next;
     if (next != null) activateBloc(next);
-}
-
-// ----- Focus-lock buttons -----
-function createFocusLockButtons() {
-    const room = document.getElementById("committee-room-p2");
-    if (!room) return;
-    ["A", "B"].forEach((side, i) => {
-        const btn = document.createElement("button");
-        btn.className = `focus-lock-btn bloc-${side}`;
-        btn.id = `focus-lock-${side}`;
-        btn.textContent = "Lock focus";
-        btn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            toggleFocusLock(i);
-        });
-        room.appendChild(btn);
-    });
-}
-
-function removeFocusLockButtons() {
-    document.querySelectorAll(".focus-lock-btn").forEach(b => b.remove());
-}
-
-function updateLockButtons() {
-    const c = state.p2.caucus;
-    ["A", "B"].forEach((side, i) => {
-        const btn = document.getElementById(`focus-lock-${side}`);
-        if (!btn) return;
-        const shouldShow = c.hoveredIdx === i || c.lockedIdx === i;
-        btn.classList.toggle("visible", shouldShow);
-        const locked = c.lockedIdx === i;
-        btn.classList.toggle("locked", locked);
-        btn.textContent = locked ? "Unlock" : "Lock focus";
-    });
-}
-
-function toggleFocusLock(idx) {
-    const c = state.p2.caucus;
-    if (c.lockedIdx === idx) {
-        // unlock — remain active while cursor is still over it, else clear.
-        c.lockedIdx = null;
-    } else {
-        c.lockedIdx = idx;
-    }
-    recomputeActiveBloc();
-    updateLockButtons();
 }
 
 // ----- Delegate click: leader guess -----
@@ -2787,94 +2853,113 @@ function onCaucusDelegateClick(e) {
     bloc.guessIdx = delIdx;
 }
 
-// ----- Dialogue engine -----
+// ----- Dialogue engine (v24 — scripted playback) -----
+function isCutoffLine(line) {
+    const t = line.trim();
+    return t.endsWith(",") || t.endsWith("...");
+}
+
+// Shows delegate/text as a bubble at their seat. When overlap is true, marks it
+// as the interrupting bubble: it fades in and its seat is bumped above the
+// bubble it's cutting off, so it reads as on top rather than winning stacking
+// by DOM-order coincidence.
+function renderCaucusBubble(delegate, text, overlap = false) {
+    showSpeechBubble(delegate, text, "committee-room-p2");
+    const seat = getSeatElement(delegateIndexOf(delegate), "committee-room-p2");
+    const bubble = seat ? seat.querySelector(".speech-bubble") : null;
+    if (overlap) {
+        if (bubble) bubble.classList.add("overlap-bubble");
+        if (seat) seat.classList.add("overlap-front");
+    }
+    return { delegate, seat };
+}
+
+function clearCaucusBubbleRef(ref) {
+    if (!ref) return;
+    clearSpeechBubble(ref.delegate, "committee-room-p2");
+    if (ref.seat) ref.seat.classList.remove("overlap-front");
+}
+
+function displayTurn(blocIdx, idx, { asOverlap = false } = {}) {
+    const bloc = state.p2.caucus.blocs[blocIdx];
+    const entry = bloc.script[idx];
+    if (!entry) return;
+    const delegate = bloc.delegates.find(d => d.personality === entry.role);
+    bloc.turnIdx = idx;
+    if (!delegate) return; // role not present in this bloc (should not happen; slacker never scripted)
+    const text = substituteLine(entry.line, delegate, bloc);
+    if (asOverlap) {
+        bloc.overlappingBubble = renderCaucusBubble(delegate, text, true);
+    } else {
+        bloc.currentBubble = renderCaucusBubble(delegate, text);
+    }
+}
+
+function scheduleLifecycle(blocIdx, idx, elapsedMs = 0) {
+    const bloc = state.p2.caucus.blocs[blocIdx];
+    const entry = bloc.script[idx];
+    const hasNext = idx + 1 < bloc.script.length;
+    const cutoff = hasNext && isCutoffLine(entry.line);
+
+    if (cutoff) {
+        const toOverlap = Math.max(0, CAUCUS_CUTOFF_OVERLAP_MS - elapsedMs);
+        bloc.turnTimer = setTimeout(() => {
+            displayTurn(blocIdx, idx + 1, { asOverlap: true });
+            const toHide = CAUCUS_BUBBLE_VISIBLE_MS - CAUCUS_CUTOFF_OVERLAP_MS;
+            bloc.turnTimer = setTimeout(() => {
+                clearCaucusBubbleRef(bloc.currentBubble);
+                // Overlap resolved: this bubble is no longer cutting anyone
+                // off, so drop its z-index boost before it might one day
+                // become the "old" bubble in a later overlap.
+                if (bloc.overlappingBubble && bloc.overlappingBubble.seat) {
+                    bloc.overlappingBubble.seat.classList.remove("overlap-front");
+                }
+                bloc.currentBubble = bloc.overlappingBubble;
+                bloc.overlappingBubble = null;
+                scheduleLifecycle(blocIdx, idx + 1, toHide);
+            }, toHide);
+        }, toOverlap);
+    } else {
+        const toHide = Math.max(0, CAUCUS_BUBBLE_VISIBLE_MS - elapsedMs);
+        bloc.turnTimer = setTimeout(() => {
+            clearCaucusBubbleRef(bloc.currentBubble);
+            bloc.currentBubble = null;
+            bloc.turnTimer = setTimeout(() => {
+                bloc.turnTimer = null;
+                bloc.turnIdx = idx + 1;
+                if (!hasNext) return; // script done; hold silent
+                displayTurn(blocIdx, idx + 1);
+                scheduleLifecycle(blocIdx, idx + 1, 0);
+            }, CAUCUS_BUBBLE_GAP_MS);
+        }, toHide);
+    }
+}
+
+function setOtherBlocDim(blocIdx, on) {
+    const otherSide = state.p2.caucus.blocs[1 - blocIdx].side;
+    document.querySelectorAll(`#committee-room-p2 .delegate-seat[data-bloc-side="${otherSide}"]`)
+        .forEach(seat => seat.classList.toggle("bloc-dimmed", on));
+}
+
 function activateBloc(blocIdx) {
     const bloc = state.p2.caucus.blocs[blocIdx];
-    if (bloc._active) return;
-    bloc._active = true;
-    showNextBubble(blocIdx);
+    setOtherBlocDim(blocIdx, true);
+    if (bloc.turnIdx >= bloc.script.length) return; // script already finished; hold silent
+    bloc.turnTimer = setTimeout(() => {
+        bloc.turnTimer = null;
+        displayTurn(blocIdx, bloc.turnIdx);
+        scheduleLifecycle(blocIdx, bloc.turnIdx, 0);
+    }, CAUCUS_HOVER_IN_DELAY_MS);
 }
 
 function deactivateBloc(blocIdx) {
     const bloc = state.p2.caucus.blocs[blocIdx];
-    if (!bloc._active) return;
-    bloc._active = false;
-    if (bloc._currentSpeaker) {
-        clearSpeechBubble(bloc._currentSpeaker, "committee-room-p2");
-        bloc._currentSpeaker = null;
-    }
-    if (bloc._bubbleTimer) { clearTimeout(bloc._bubbleTimer); bloc._bubbleTimer = null; }
-    if (bloc._gapTimer)    { clearTimeout(bloc._gapTimer);    bloc._gapTimer = null; }
-}
-
-function showNextBubble(blocIdx) {
-    const bloc = state.p2.caucus.blocs[blocIdx];
-    if (!bloc._active) return;
-    const pick = pickCaucusLine(bloc);
-    if (!pick) return;
-    const { delegate, line } = pick;
-    showSpeechBubble(delegate, line, "committee-room-p2");
-    bloc._currentSpeaker = delegate;
-    bloc._bubbleTimer = setTimeout(() => {
-        clearSpeechBubble(delegate, "committee-room-p2");
-        bloc._currentSpeaker = null;
-        bloc._bubbleTimer = null;
-        if (!bloc._active) return;
-        bloc._gapTimer = setTimeout(() => {
-            bloc._gapTimer = null;
-            showNextBubble(blocIdx);
-        }, CAUCUS_BUBBLE_GAP_MS);
-    }, CAUCUS_BUBBLE_VISIBLE_MS);
-}
-
-function pickCaucusLine(bloc) {
-    const blocType = bloc.leader === "power" ? "power-led" : "carolina-led";
-    const pool = CAUCUS_LINES[blocType];
-    const bucket = state.p2.caucus.topicBucket;
-
-    // First bubble: leader opener.
-    if (!bloc.openerUsed) {
-        bloc.openerUsed = true;
-        const leaderRole = bloc.leader;
-        const del = bloc.delegates.find(d => d.personality === leaderRole);
-        if (del) {
-            const opener = pool[leaderRole].opener[0];
-            bloc.usedLines.add(opener);
-            return { delegate: del, line: substituteLine(opener, del, bloc) };
-        }
-    }
-
-    const weights = blocType === "power-led"
-        ? { power: 55, demboy: 30, carolina: 15 }
-        : { carolina: 40, power: 30, demboy: 25 };
-
-    // Filter to roles actually present in the bloc.
-    const availableRoles = Object.keys(weights).filter(r =>
-        bloc.delegates.some(d => d.personality === r)
-    );
-    if (availableRoles.length === 0) return null;
-    const totalW = availableRoles.reduce((s, r) => s + weights[r], 0);
-    let roll = Math.random() * totalW;
-    let chosenRole = availableRoles[0];
-    for (const r of availableRoles) {
-        roll -= weights[r];
-        if (roll <= 0) { chosenRole = r; break; }
-    }
-    const line = drawCaucusLineForRole(pool, chosenRole, bucket, bloc);
-    const del = bloc.delegates.find(d => d.personality === chosenRole);
-    if (!del) return null;
-    return { delegate: del, line: substituteLine(line, del, bloc) };
-}
-
-function drawCaucusLineForRole(pool, role, bucket, bloc) {
-    const rolePool = pool[role] || {};
-    const all = [...(rolePool.agnostic || []), ...(rolePool[bucket] || [])];
-    if (all.length === 0) return "";
-    const unused = all.filter(l => !bloc.usedLines.has(l));
-    const candidates = unused.length > 0 ? unused : all;
-    const chosen = pick(candidates);
-    bloc.usedLines.add(chosen);
-    return chosen;
+    setOtherBlocDim(blocIdx, false);
+    if (bloc.turnTimer) { clearTimeout(bloc.turnTimer); bloc.turnTimer = null; }
+    clearCaucusBubbleRef(bloc.currentBubble);
+    bloc.currentBubble = null;
+    clearCaucusBubbleRef(bloc.overlappingBubble);
+    bloc.overlappingBubble = null;
 }
 
 function substituteLine(template, delegate, bloc) {
@@ -3022,7 +3107,6 @@ function finishPhase3Debrief() {
     renderPostMotionsScreen("phase3");
 
     // Clean up caucus UI.
-    removeFocusLockButtons();
     document.querySelectorAll("#committee-room-p2 .delegate-seat").forEach(s => {
         s.classList.remove("caucus-clickable", "leader-guess");
         s.removeEventListener("click", onCaucusDelegateClick);
