@@ -6,7 +6,7 @@
 
 ## 0. Current Versions (Source of Truth)
 
-- `game.js` — **v28**
+- `game.js` — **v29**
 - `style.css` — **v21**
 - `index.html` — **v12**
 
@@ -377,7 +377,8 @@ None.
 
 ## 13. Change Log (Major Milestones)
 
-- **v28 (motions-close button restyled; dropped on-time 10-sec speech flash, current)**
+- **v29 (speaker-selection soft-lock fix, current)** — Fixed a reported bug: a demboy/slacker proposer choosing "last" on a single-round mod could leave the player prompted for one fewer speaker than needed, permanently stranding a null `speakerOrder` slot and soft-locking the speech loop. Root cause: `round1Target`/`round2Target` were counters manually decremented in parallel with `speakerOrder`, so the two could desync. Fix: they're now fixed round sizes set once and never mutated again; "how many more are needed" is always derived fresh from counting actual filled slots in `speakerOrder` (new `round1FilledCount()`/`round2FilledCount()`), so it can't drift out of sync regardless of how or how many times a slot gets filled.
+- **v28 (motions-close button restyled; dropped on-time 10-sec speech flash)**
     - The `ready_to_vote` stage's button (shared by Phase 2 and Phase 3's motions screen, and expected to carry into Phases 4-5) changed from blue "Move to vote on the motions →" to gold/italic "That is all the motions we will be accepting at this time." — dropping the `proceed` class puts it under the existing chair-dialogue button styling used elsewhere (e.g. the dilatory ruling prompt, the favor/oppose vote calls). Handler and voting flow unchanged.
     - `onGavelClick`'s on-time warn-phase flash ("The chair recognizes 10 seconds remaining.") no longer fires for speeches. The late-warning flash and the caucus's "one minute remaining" flash are unchanged.
 - **v27 (glow/bubble fix + shorter caucus ramp)**

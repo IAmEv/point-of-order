@@ -1,5 +1,26 @@
 /* ==========================================================
    POINT OF ORDER — Game Logic
+   v29: Speaker-selection soft-lock fix (single-round mod +
+        proposer chooses "last").
+        - Root cause: round1Target/round2Target were separately
+          mutated counters that had to be kept in perfect sync
+          with how many null slots remained in speakerOrder.
+          Reported bug: a demboy/slacker proposer choosing "last"
+          on a single-round mod (e.g. a 3:45 -> 4-speaker mod)
+          could leave the player prompted for one fewer speaker
+          than actually needed, leaving one speakerOrder slot
+          permanently null and soft-locking the speech loop once
+          all picked speakers had spoken.
+        - Fix: round1Target/round2Target are now fixed round
+          sizes, set once in enterSpeakerSelection and never
+          mutated again by proposer placement or anything else.
+          New round1FilledCount()/round2FilledCount() derive "how
+          many are still needed" fresh from speakerOrder itself
+          every time it's checked (raise-pool sizing, the "am I
+          done" checks in enterRound1/enterRound2/
+          onDelegateClickForSpeaker, and both round tallies), so
+          the count can never drift out of sync with the array
+          again, regardless of how a slot got filled.
    v28: Motions-close button restyled as chair dialogue; dropped
         the on-time 10-sec speech-warning flash.
         - "ready_to_vote" stage's button (shared by Phase 2 and
@@ -1262,7 +1283,7 @@ function renderMotionsDais() {
                 : `Round 1 &middot; select the <span class="prompt-emph">first</span> speakers`;
             const status = daisStatus(
                 `${label} &nbsp; ` +
-                `<span class="tally">${p2.round1Picked.length} / ${p2.round1Target}</span> &nbsp; ` +
+                `<span class="tally">${round1FilledCount()} / ${p2.round1Target}</span> &nbsp; ` +
                 `<span class="hint">Click a raised placard.</span>`
             );
             status.id = "selection-status";
@@ -1273,7 +1294,7 @@ function renderMotionsDais() {
         case "round2_select": {
             const status = daisStatus(
                 `Round 2 &middot; select the <span class="prompt-emph">remaining</span> speakers &nbsp; ` +
-                `<span class="tally">${p2.round2Picked.length} / ${p2.round2Target}</span> &nbsp; ` +
+                `<span class="tally">${round2FilledCount()} / ${p2.round2Target}</span> &nbsp; ` +
                 `<span class="hint">Click a raised placard.</span>`
             );
             status.id = "selection-status";
@@ -1814,6 +1835,28 @@ function isSingleRoundMod(total) {
     return total <= 4;
 }
 
+// v29 — round1Target/round2Target are fixed slot counts for each round,
+// set once in enterSpeakerSelection and never mutated afterward (including
+// by proposer placement). "How many are still needed" is always derived
+// fresh from speakerOrder itself, so it can never drift out of sync no
+// matter how a slot got filled or how many times a code path runs.
+function round1FilledCount() {
+    const p2 = state.p2;
+    let n = 0;
+    for (let i = 0; i < p2.round1Target; i++) {
+        if (p2.speakerOrder[i] != null) n++;
+    }
+    return n;
+}
+function round2FilledCount() {
+    const p2 = state.p2;
+    let n = 0;
+    for (let i = p2.round1Target; i < p2.totalSpeakers; i++) {
+        if (p2.speakerOrder[i] != null) n++;
+    }
+    return n;
+}
+
 function enterSpeakerSelection() {
     const p2 = state.p2;
     const motion = p2.motionsCollected[p2.currentMotionIdx];
@@ -1902,19 +1945,8 @@ function handleProposerChoice() {
         return;
     }
 
-    if (choice === "first") {
-        p2.speakerOrder[0] = proposerIdx;
-        p2.spokenSet.add(proposerIdx);
-        p2.round1Target = Math.max(0, p2.round1Target - 1);
-    } else {
-        p2.speakerOrder[p2.totalSpeakers - 1] = proposerIdx;
-        p2.spokenSet.add(proposerIdx);
-        if (isSingleRoundMod(p2.totalSpeakers)) {
-            p2.round1Target = Math.max(0, p2.round1Target - 1);
-        } else {
-            p2.round2Target = Math.max(0, p2.round2Target - 1);
-        }
-    }
+    p2.speakerOrder[choice === "first" ? 0 : p2.totalSpeakers - 1] = proposerIdx;
+    p2.spokenSet.add(proposerIdx);
     renderSpeakersList(true);
 
     setTimeout(() => {
@@ -1995,7 +2027,7 @@ function enterRound1() {
     const pool = buildRound1RaisePool();
     applyRaisePool(pool);
 
-    if (p2.round1Picked.length >= p2.round1Target) {
+    if (round1FilledCount() >= p2.round1Target) {
         enterRound1Speeches();
         return;
     }
@@ -2005,7 +2037,7 @@ function enterRound1() {
 function buildRound1RaisePool() {
     const p2 = state.p2;
     const proposerIdx = delegateIndexOf(p2.speakersMotion.delegate);
-    const slotsRemaining = p2.round1Target - p2.round1Picked.length;
+    const slotsRemaining = p2.round1Target - round1FilledCount();
 
     const pool = [];
     state.delegates.forEach((d, i) => {
@@ -2054,7 +2086,7 @@ function enterRound2() {
     p2.currentRound = 2;
     p2.stage = "round2_select";
 
-    if (p2.round2Picked.length >= p2.round2Target) {
+    if (round2FilledCount() >= p2.round2Target) {
         enterRound2Speeches();
         return;
     }
@@ -2155,8 +2187,8 @@ function onDelegateClickForSpeaker(e) {
     updateSelectionCounter();
 
     const target = p2.stage === "round1_select" ? p2.round1Target : p2.round2Target;
-    const picked = p2.stage === "round1_select" ? p2.round1Picked.length : p2.round2Picked.length;
-    if (picked >= target) {
+    const filled = p2.stage === "round1_select" ? round1FilledCount() : round2FilledCount();
+    if (filled >= target) {
         setTimeout(() => {
             if (p2.stage === "round1_select") enterRound1Speeches();
             else enterRound2Speeches();
@@ -2171,9 +2203,9 @@ function updateSelectionCounter() {
     const tally = status.querySelector(".tally");
     if (!tally) return;
     if (p2.stage === "round1_select") {
-        tally.textContent = `${p2.round1Picked.length} / ${p2.round1Target}`;
+        tally.textContent = `${round1FilledCount()} / ${p2.round1Target}`;
     } else if (p2.stage === "round2_select") {
-        tally.textContent = `${p2.round2Picked.length} / ${p2.round2Target}`;
+        tally.textContent = `${round2FilledCount()} / ${p2.round2Target}`;
     }
 }
 
