@@ -1,5 +1,61 @@
 /* ==========================================================
    POINT OF ORDER — Game Logic
+   v32: Phase 3 caucus fast-forward toggle (style.css v23,
+        index.html unchanged from v13).
+        - New sp.ffActive flag on the caucus's speeches object. A new
+          icon-only button (⏩, no "3x"/text label), positioned to the
+          left of the "UNMODERATED CAUCUS" / minutes label, appears
+          in the caucus dais the instant the timer enters "pre" phase
+          (same moment setupCaucusTimer() runs); toggles sp.ffActive
+          on click; disappears entirely (renderCaucusDais omits its
+          markup) once the timer hits 0:00 — no FF state persists
+          past that point (ffActive is also explicitly reset to
+          false at the zero transition).
+        - tickSpeech: the rate used to decrement displayedSec is
+          multiplied by CAUCUS_FF_MULTIPLIER (3) whenever
+          caucusMode && ffActive, for whichever phase (pre or warn)
+          is currently active. Auto-revert: the instant the existing
+          pre -> warn threshold check fires (still a <= comparison,
+          so a 3x-sped tick can't jump past the exact threshold and
+          skip the revert), if ffActive was on it's forced off via
+          setCaucusFF(false). The button can be clicked again to
+          re-enable FF during warn phase; that's handled by the same
+          rate-multiply logic, no special-casing needed.
+        - Dialogue turn timing was refactored from raw nested
+          setTimeout calls (fixed durations baked in at schedule
+          time, so a mid-flight rate change couldn't affect them,
+          which would have caused a stutter/desync between timer and
+          dialogue speed on toggle) to scheduleFFAwareStep(), which
+          records each step's nominal (1x) duration, start timestamp,
+          and the FF rate active when it was scheduled.
+          rescaleActiveCaucusStep() — called from setCaucusFF() on
+          every toggle (manual click or auto-revert) — cancels the
+          active bloc's in-flight step and reschedules the remaining
+          nominal time at the new rate, so an in-progress bubble
+          (including mid-overlap) visibly speeds up or slows down
+          immediately rather than waiting for its next scheduled
+          turn. FF is caucus-wide, not per-bloc: switching hover
+          focus to the other bloc activates it fresh via the
+          existing activateBloc()/scheduleLifecycle() path, which
+          already reads the current ffActive state, so the newly
+          active bloc picks up the same FF speed with no extra
+          wiring. deactivateBloc() now also clears the paused bloc's
+          step-tracking fields, so a stale record from before a
+          pause can't be misread if that bloc reactivates and FF
+          toggles again during its (FF-unaffected) hover-in delay.
+        - Existing hover pause/resume behavior (cancel timers, hide
+          bubbles, preserve turnIdx on pause; replay the current line
+          fresh on resume) is unchanged; resuming plays at whatever
+          FF state is active at that moment, never a forced reset.
+        - Gavel-down logic, warning on-time/late/missed thresholds,
+          and debrief scoring are untouched — all of that keys off
+          displayedSec, not real elapsed time, so FF (a real-time-to-
+          displayed-time rate change) doesn't affect any of it.
+        - style.css v23: new .caucus-ff-btn styles (off/hover/active
+          states), same technique as the gavel button's state-driven
+          background/border/box-shadow, active state using the
+          existing gold accent (consistent with leader-guess/
+          raised-voting elsewhere in the app).
    v31: Two fixes (style.css/index.html unchanged from v22/v13).
         - Phase 4 Stage 1 motion spoken text no longer ends in a
           trailing period ("...and straight into voting" /
@@ -413,6 +469,7 @@ const CAUCUS_BUBBLE_GAP_MS      = 400;   // normal turn: silence before the next
 const CAUCUS_CUTOFF_OVERLAP_MS  = 1900;  // cutoff turn: when the interrupting line appears
 const CAUCUS_HOVER_DEBOUNCE_MS  = 150;   // hover must persist this long before activeIdx changes
 const CAUCUS_HOVER_IN_DELAY_MS  = 200;   // soft delay before a newly-active bloc's first bubble appears
+const CAUCUS_FF_MULTIPLIER      = 3;     // v32 — fast-forward speed for both timer rate and dialogue playback
 
 /* ==========================================================
    PHASE 4 STAGE 1 — VOTING PROCEDURE MOTION TUNING (v30)
@@ -2642,17 +2699,27 @@ function tickSpeech() {
     sp.lastTick = now;
 
     if (sp.phase === "pre" || sp.phase === "warn") {
-        const rate = sp.phase === "pre" ? sp.preRate : sp.warnRate;
+        const baseRate = sp.phase === "pre" ? sp.preRate : sp.warnRate;
+        // v32 — fast-forward multiplies whichever rate is currently active
+        // (preRate during pre, warnRate if re-enabled during warn).
+        const rate = (sp.caucusMode && sp.ffActive) ? baseRate * CAUCUS_FF_MULTIPLIER : baseRate;
         sp.displayedSec -= rate * dt;
 
         if (sp.displayedSec <= (sp.warnThreshold || 10) && sp.phase === "pre") {
             sp.phase = "warn";
+            // v32 — FF auto-reverts the instant warn phase is reached. The
+            // <= check above (not ==) already guarantees this fires even
+            // if a 3x-sped tick jumped straight past the exact threshold.
+            if (sp.caucusMode && sp.ffActive) setCaucusFF(false);
             renderMotionsDais();
             return;
         }
         if (sp.displayedSec <= 0) {
             sp.displayedSec = 0;
             sp.phase = "zero";
+            // v32 — the FF button disappears entirely once the timer hits
+            // 0:00; no FF state should persist past that point.
+            if (sp.caucusMode) sp.ffActive = false;
             if (sp.warning == null) {
                 sp.warning = "missed";
                 // v23 — splash for missed warning (fires at 0:00).
@@ -2991,6 +3058,13 @@ function startUnmodCaucus(motion) {
         bloc.turnTimer = null;
         bloc.currentBubble = null;
         bloc.overlappingBubble = null;
+        // v32 — fast-forward toggle-safe rescaling bookkeeping for whatever
+        // dialogue lifecycle step is currently in flight (see
+        // scheduleFFAwareStep/rescaleActiveCaucusStep).
+        bloc._stepNominalMs = null;
+        bloc._stepStartedAt = null;
+        bloc._stepFFAtStart = null;
+        bloc._stepCallback = null;
     });
     p2.caucus = {
         blocs,
@@ -3225,6 +3299,58 @@ function displayTurn(blocIdx, idx, { asOverlap = false } = {}) {
     }
 }
 
+// ----- Fast-forward toggle-safe step scheduling (v32) -----
+// Dialogue turn timing used to be raw nested setTimeout calls with fixed
+// durations baked in at schedule time; a rate change (FF toggling on/off)
+// couldn't affect an already-in-flight timeout, causing a stutter/desync
+// between the timer and dialogue speed. Every dialogue wait now goes
+// through scheduleFFAwareStep, which records enough bookkeeping (nominal
+// 1x duration, when the step started, and the FF rate that was active at
+// that moment) for rescaleActiveCaucusStep to cancel an in-flight wait and
+// reschedule the *remaining* nominal time at whatever rate is current.
+function isCaucusFFActive() {
+    const sp = state.p2 && state.p2.speeches;
+    return !!(sp && sp.caucusMode && sp.ffActive);
+}
+
+function scheduleFFAwareStep(blocIdx, nominalMs, callback) {
+    const bloc = state.p2.caucus.blocs[blocIdx];
+    const ff = isCaucusFFActive();
+    bloc._stepNominalMs = nominalMs;
+    bloc._stepStartedAt = performance.now();
+    bloc._stepFFAtStart = ff;
+    bloc._stepCallback = callback;
+    const delay = Math.max(0, ff ? nominalMs / CAUCUS_FF_MULTIPLIER : nominalMs);
+    bloc.turnTimer = setTimeout(() => {
+        bloc._stepNominalMs = null;
+        bloc._stepStartedAt = null;
+        bloc._stepFFAtStart = null;
+        bloc._stepCallback = null;
+        bloc.turnTimer = null;
+        callback();
+    }, delay);
+}
+
+// Called whenever FF toggles (manual click or auto-revert). Only the
+// currently-active bloc can have a live dialogue timer, so this rescales
+// that one step in place; the inactive bloc has no running timer to touch
+// and will simply pick up the current FF state whenever it next activates.
+function rescaleActiveCaucusStep() {
+    const c = state.p2.caucus;
+    if (!c || c.activeIdx == null) return;
+    const blocIdx = c.activeIdx;
+    const bloc = c.blocs[blocIdx];
+    if (bloc._stepNominalMs == null || !bloc.turnTimer) return;
+    const now = performance.now();
+    const elapsedReal = now - bloc._stepStartedAt;
+    const elapsedNominal = elapsedReal * (bloc._stepFFAtStart ? CAUCUS_FF_MULTIPLIER : 1);
+    const remainingNominal = Math.max(0, bloc._stepNominalMs - elapsedNominal);
+    clearTimeout(bloc.turnTimer);
+    bloc.turnTimer = null;
+    const callback = bloc._stepCallback;
+    scheduleFFAwareStep(blocIdx, remainingNominal, callback);
+}
+
 function scheduleLifecycle(blocIdx, idx, elapsedMs = 0) {
     const bloc = state.p2.caucus.blocs[blocIdx];
     const entry = bloc.script[idx];
@@ -3233,10 +3359,10 @@ function scheduleLifecycle(blocIdx, idx, elapsedMs = 0) {
 
     if (cutoff) {
         const toOverlap = Math.max(0, CAUCUS_CUTOFF_OVERLAP_MS - elapsedMs);
-        bloc.turnTimer = setTimeout(() => {
+        scheduleFFAwareStep(blocIdx, toOverlap, () => {
             displayTurn(blocIdx, idx + 1, { asOverlap: true });
             const toHide = CAUCUS_BUBBLE_VISIBLE_MS - CAUCUS_CUTOFF_OVERLAP_MS;
-            bloc.turnTimer = setTimeout(() => {
+            scheduleFFAwareStep(blocIdx, toHide, () => {
                 clearCaucusBubbleRef(bloc.currentBubble);
                 // Overlap resolved: this bubble is no longer cutting anyone
                 // off, so drop its z-index boost before it might one day
@@ -3247,21 +3373,20 @@ function scheduleLifecycle(blocIdx, idx, elapsedMs = 0) {
                 bloc.currentBubble = bloc.overlappingBubble;
                 bloc.overlappingBubble = null;
                 scheduleLifecycle(blocIdx, idx + 1, toHide);
-            }, toHide);
-        }, toOverlap);
+            });
+        });
     } else {
         const toHide = Math.max(0, CAUCUS_BUBBLE_VISIBLE_MS - elapsedMs);
-        bloc.turnTimer = setTimeout(() => {
+        scheduleFFAwareStep(blocIdx, toHide, () => {
             clearCaucusBubbleRef(bloc.currentBubble);
             bloc.currentBubble = null;
-            bloc.turnTimer = setTimeout(() => {
-                bloc.turnTimer = null;
+            scheduleFFAwareStep(blocIdx, CAUCUS_BUBBLE_GAP_MS, () => {
                 bloc.turnIdx = idx + 1;
                 if (!hasNext) return; // script done; hold silent
                 displayTurn(blocIdx, idx + 1);
                 scheduleLifecycle(blocIdx, idx + 1, 0);
-            }, CAUCUS_BUBBLE_GAP_MS);
-        }, toHide);
+            });
+        });
     }
 }
 
@@ -3286,6 +3411,14 @@ function deactivateBloc(blocIdx) {
     const bloc = state.p2.caucus.blocs[blocIdx];
     setOtherBlocDim(blocIdx, false);
     if (bloc.turnTimer) { clearTimeout(bloc.turnTimer); bloc.turnTimer = null; }
+    // v32 — also clear FF step bookkeeping so a stale in-flight-step record
+    // from before this pause can't be misread by rescaleActiveCaucusStep()
+    // if this bloc reactivates and FF gets toggled during its hover-in
+    // delay (before scheduleLifecycle has scheduled a fresh tracked step).
+    bloc._stepNominalMs = null;
+    bloc._stepStartedAt = null;
+    bloc._stepFFAtStart = null;
+    bloc._stepCallback = null;
     clearCaucusBubbleRef(bloc.currentBubble);
     bloc.currentBubble = null;
     clearCaucusBubbleRef(bloc.overlappingBubble);
@@ -3331,6 +3464,7 @@ function setupCaucusTimer(motion) {
     // Rate: (N-1) displayed minutes across 75 real sec.
     sp.preRate  = ((totalMin - 1) * 60) / CAUCUS_PRE_REAL_SEC;
     sp.warnRate = 60 / CAUCUS_WARN_REAL_SEC;
+    sp.ffActive = false; // v32 — fast-forward toggle, off by default
     if (sp.timerId) { clearInterval(sp.timerId); sp.timerId = null; }
     if (sp._spamTimer) { clearTimeout(sp._spamTimer); sp._spamTimer = null; }
     sp.timerId = setInterval(tickSpeech, 50);
@@ -3344,7 +3478,20 @@ function renderCaucusDais(bar) {
     const minLabel = motion ? `${motion.min} min` : "";
     const wrap = document.createElement("div");
     wrap.className = "speech-dais";
+    // v32 — fast-forward toggle. Appears the moment the caucus clock
+    // starts (phase "pre") and disappears entirely (not just disabled)
+    // once the timer hits 0:00; see tickSpeech's zero-transition, which
+    // triggers the re-render that omits this markup. Icon-only (two
+    // right-facing triangles, the conventional fast-forward glyph); no
+    // "3x" label.
+    const ffButtonHTML = sp.phase !== "zero"
+        ? `<button class="caucus-ff-btn${sp.ffActive ? " active" : ""}" id="caucus-ff-btn"
+                   aria-pressed="${sp.ffActive ? "true" : "false"}" aria-label="Fast-forward" title="Fast-forward">
+               <span class="caucus-ff-icon">&#9193;</span>
+           </button>`
+        : "";
     wrap.innerHTML = `
+        ${ffButtonHTML}
         <div class="speech-who">
             <div class="speech-who-label">UNMODERATED CAUCUS</div>
             <div class="speech-who-name">${minLabel}</div>
@@ -3361,8 +3508,36 @@ function renderCaucusDais(bar) {
         </div>
     `;
     bar.appendChild(wrap);
+    const ffbtn = wrap.querySelector("#caucus-ff-btn");
+    if (ffbtn) ffbtn.addEventListener("click", onCaucusFFClick);
     const gbtn = wrap.querySelector("#gavel-btn");
     if (gbtn) gbtn.addEventListener("click", onGavelClick);
+}
+
+// ----- Fast-forward button (v32) -----
+// Sets sp.ffActive and rescales whatever dialogue step is currently in
+// flight for the active bloc; patches the button's own DOM in place
+// rather than doing a full renderMotionsDais() re-render (matching the
+// gavel button's pattern of direct DOM updates on click), so toggling FF
+// doesn't disturb the timer/thud-layer mid-tick. Called both from the
+// manual click handler and from tickSpeech's pre->warn auto-revert.
+function setCaucusFF(active) {
+    const sp = state.p2 && state.p2.speeches;
+    if (!sp || sp.ffActive === active) return;
+    sp.ffActive = active;
+    rescaleActiveCaucusStep();
+    const btn = document.getElementById("caucus-ff-btn");
+    if (btn) {
+        btn.classList.toggle("active", active);
+        btn.setAttribute("aria-pressed", active ? "true" : "false");
+    }
+}
+
+function onCaucusFFClick() {
+    const sp = state.p2 && state.p2.speeches;
+    if (!sp || !sp.caucusMode || sp.mode !== "speaking") return;
+    if (sp.phase === "zero") return; // button shouldn't even be rendered here
+    setCaucusFF(!sp.ffActive);
 }
 
 // ----- End of caucus -----

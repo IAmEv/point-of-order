@@ -6,8 +6,8 @@
 
 ## 0. Current Versions (Source of Truth)
 
-- `game.js` — **v31**
-- `style.css` — **v22**
+- `game.js` — **v32**
+- `style.css` — **v23**
 - `index.html` — **v13**
 
 When starting a fresh chat: read this doc first, then confirm the version headers in each file match the numbers above. If they don't, flag the mismatch before making changes.
@@ -277,6 +277,17 @@ Same three-state button (`pre` / `warn` / `zero`) as speeches, but with caucus-s
 - **Gavel-down** at 0:00: same ≥2 click / ≤20 cap / 800ms spam-window logic as speeches. `endUnmodCaucus({gavelDown: "on-time" | "missed"})` is the exit.
 - **Missed gavel-down flash:** *"Caucus ran over, no gavel-down."*
 
+#### Fast-Forward Toggle (v32)
+
+An icon-only button (⏩, the conventional two-right-triangle fast-forward glyph, no text label) sits in the caucus dais to the left of the "UNMODERATED CAUCUS" / minutes label. Caucus-wide (one state for the whole caucus, not per bloc), not a per-delegate or per-bloc setting.
+
+- **Lifecycle:** appears the instant the caucus timer enters `pre` phase (the same moment `setupCaucusTimer()` runs); toggles on/off on click; disappears entirely (not merely disabled) the instant the timer hits 0:00. `sp.ffActive` is explicitly reset to `false` at that same 0:00 transition, so no FF state survives past it.
+- **Speed effect:** while active, multiplies the timer's currently-active rate (`preRate` during `pre`, `warnRate` if re-enabled during `warn`) by **3×**, and runs every per-bloc dialogue turn-display duration (2800ms visible / 400ms gap / 1900ms cutoff-overlap trigger / 900ms overlap window) at **1/3** its normal length.
+- **Auto-revert:** the instant displayed seconds crosses into `warn` phase (`≤ warnThreshold`, i.e. the same `<=` comparison already used for that transition, so a 3×-sped tick can't jump past the exact threshold and skip the revert), FF is forced off and the button reverts to its "off" state. It can be clicked again afterward to re-enable FF during `warn`; that behaves identically to `pre`-phase FF, no special-casing.
+- **Hover pause/resume:** unchanged in every other respect (cancels timers, hides bubbles, preserves `turnIdx` on pause; replays the current line fresh on resume). The only change: resuming plays at whatever FF state is currently active, never forced back to normal speed.
+- **Toggle-safe rescaling:** dialogue turn timing runs through `scheduleFFAwareStep()`/`rescaleActiveCaucusStep()` (see §11) so an in-flight bubble — including mid-overlap — visibly speeds up or slows down the instant FF toggles, rather than waiting for its next already-scheduled turn.
+- **Unaffected:** gavel-down logic, warning on-time/late/missed thresholds, and debrief scoring all key off displayed seconds, not real elapsed time, so FF (a real-time-to-displayed-time rate change) doesn't touch any of that.
+
 #### Debrief
 
 `finishPhase3Debrief()` computes:
@@ -292,7 +303,7 @@ Summary clauses:
 - Gavel-down missed → "Caucus ran over, no gavel-down."
 - Zero mistakes → "A masterclass in caucus management."
 
-Renders into `#phase2-stars` / `#phase2-summary` (reused). Post-motions title becomes "Caucus Concluded", flavor line reads *"The N minute unmoderated caucus concludes."* Button reads "Adjourn & Restart" and reloads the page.
+Renders into `#phase2-stars` / `#phase2-summary` (reused). Post-motions title becomes "Caucus Concluded", flavor line reads *"The N minute unmoderated caucus concludes."* Button reads "Proceed to Voting Procedure →" and calls `startPhase4()` (was "Adjourn & Restart" / page reload prior to v30 — corrected here, this line had gone stale).
 
 ---
 
@@ -452,10 +463,12 @@ Single `state` object in `game.js`:
   - `speeches`, shared speech-loop object; `caucusMode` flag flips it into caucus behavior
 
 ### Timer Engine
-Single `setInterval` at 50ms drives both the speech clock and the caucus clock. Per-instance rates (`sp.preRate`, `sp.warnRate`) are set from either `beginSpeech()` (speeches) or `setupCaucusTimer()` (caucus). Thresholds (`sp.warnThreshold`, `sp.lateThreshold`) also configurable per instance.
+Single `setInterval` at 50ms drives both the speech clock and the caucus clock. Per-instance rates (`sp.preRate`, `sp.warnRate`) are set from either `beginSpeech()` (speeches) or `setupCaucusTimer()` (caucus). Thresholds (`sp.warnThreshold`, `sp.lateThreshold`) also configurable per instance. **v32:** in caucus mode, `tickSpeech()` multiplies whichever rate is active by `CAUCUS_FF_MULTIPLIER` (3) when `sp.ffActive` is true; see §8.5's Fast-Forward Toggle subsection.
 
-### Caucus Dialogue Engine (v24)
-Per-bloc `setTimeout` chain drives scripted playback from `CAUCUS_CONVOS`. `activateBloc(i)` starts the chain (after a 200ms soft hover-in delay); `deactivateBloc(i)` cancels timers and clears any visible bubble(s), immediately, preserving `turnIdx`. Only the `activeIdx` bloc runs. `displayTurn` shows a line; `scheduleLifecycle` drives normal vs. cutoff-overlap timing per turn (see §8.5). No line selection, no randomness, no per-bloc no-reuse set; each bloc plays its one assigned script start to finish.
+### Caucus Dialogue Engine (v24, fast-forward-aware as of v32)
+Per-bloc dialogue waits go through `scheduleFFAwareStep(blocIdx, nominalMs, callback)`, which replaced the raw nested `setTimeout` calls a plain rate-multiply couldn't retroactively affect. Each call records the step's nominal (1×) duration, a start timestamp, and the FF rate active at that moment (`bloc._stepNominalMs` / `_stepStartedAt` / `_stepFFAtStart` / `_stepCallback`), then schedules the real timeout at `nominalMs / (ffActive ? 3 : 1)`. `rescaleActiveCaucusStep()` — invoked by `setCaucusFF()` on every toggle — reads that bookkeeping for the currently-active bloc, computes how much nominal time has actually elapsed under whatever rate was running, cancels the in-flight timer, and reschedules the *remaining* nominal time at the new rate, so a bubble mid-display (including mid-overlap) audibly/visibly speeds up or slows down immediately instead of stuttering until its next scheduled turn.
+
+`activateBloc(i)` starts the chain (after a 200ms soft hover-in delay, itself NOT fast-forward-scaled — only the visible/gap/overlap turn-display durations are); `deactivateBloc(i)` cancels timers, clears any visible bubble(s) immediately, preserves `turnIdx`, and (v32) also clears the paused bloc's step-tracking fields so a stale record can't be misread if that bloc reactivates and FF toggles during its hover-in delay, before a fresh tracked step exists. Only the `activeIdx` bloc runs. `displayTurn` shows a line; `scheduleLifecycle` drives normal vs. cutoff-overlap timing per turn via `scheduleFFAwareStep` (see §8.5). No line selection, no randomness, no per-bloc no-reuse set; each bloc plays its one assigned script start to finish. FF is caucus-wide: switching hover focus to the other bloc activates it fresh through this same path, which already reads the current `ffActive` state, so no separate per-bloc FF wiring is needed.
 
 ### Asset Swap
 See §4. `DELEGATE_ART`, `GAVEL_ART`, `GAVEL_SOUND` are the sole points of change when assets are added.
@@ -491,7 +504,15 @@ None.
 
 ## 13. Change Log (Major Milestones)
 
-- **v31 (Phase 1 gray-out persistence bugfix + Phase 4 punctuation, current)**
+- **v32 (Phase 3 caucus fast-forward toggle, current)** — Separate from the Phase 4 Stage 1 work: a Phase 3 caucus feature addition. Full spec in §8.5's Fast-Forward Toggle subsection.
+    - New icon-only ⏩ button (no text label) in the caucus dais, positioned to the left of the "UNMODERATED CAUCUS" / minutes label, caucus-wide (one `sp.ffActive` state, not per-bloc). Appears the instant the timer enters `pre` phase, toggles on click, disappears entirely once the timer hits 0:00 (`ffActive` explicitly reset to `false` at that transition too).
+    - While active: `tickSpeech()` multiplies the currently-active rate (`preRate` or `warnRate`) by `CAUCUS_FF_MULTIPLIER` (3); dialogue turn-display durations run at 1/3 normal length.
+    - Auto-revert: FF is forced off the instant displayed seconds crosses into `warn` phase (reusing the existing `<=` threshold check, so a 3×-sped tick can't skip the revert). Re-clickable afterward; re-enabling during `warn` behaves identically to `pre`-phase FF.
+    - New `scheduleFFAwareStep()`/`rescaleActiveCaucusStep()` replace raw nested `setTimeout` calls in the dialogue engine so an in-flight bubble (including mid-overlap) rescales immediately on toggle instead of stuttering until its next scheduled turn. `deactivateBloc()` now also clears a paused bloc's step-tracking fields to prevent stale-data misreads on reactivation.
+    - Hover pause/resume unchanged except: resuming plays at whatever FF state is currently active, never forced back to normal speed.
+    - Gavel-down logic, warning thresholds, and debrief scoring untouched (all key off displayed seconds, not real time).
+    - style.css v23: new `.caucus-ff-btn` states, same technique as `.gavel-btn`.
+- **v31 (Phase 1 gray-out persistence bugfix + Phase 4 punctuation)**
     - **Bugfix:** a Phase 1 misclick ruling an actually-present (or P&V) delegate "absent" left `del.markedAs = "absent"` permanently set. Phase 2/3/4 room renders gray a seat out via `del.markedAs === "absent" || !del.present`, so the misclick kept that delegate visually marked absent for the rest of committee even though `del.present` (their real attendance flag, set once at committee generation and never mutated by roll call) was still `true`. New `reconcileMarkedAsAfterRollCall()`, called from `finishRollCall()`, resets `markedAs` back to the delegate's real expected ruling for any present delegate whose `markedAs` still says "absent." Truly absent delegates are unaffected either way (the `!del.present` half of that same check already grays them out correctly). Scoring is untouched: `computeAndShowScore()` reads only `state.rollResults`, never `markedAs`, so the misclick still costs a star in the Phase 1 debrief.
     - Phase 4 Stage 1's motion `spoken` text no longer ends in a trailing period, matching every other motion type (none of unmod/rr/mod's `spoken` templates end in punctuation).
     - style.css and index.html unchanged from v22/v13.

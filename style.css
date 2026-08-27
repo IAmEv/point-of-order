@@ -1,6 +1,10 @@
 /* ========================================================
    POINT OF ORDER — A UNCMUNC Chair Simulator
-   style.css — v22
+   style.css — v23
+   v23: Phase 3 caucus fast-forward toggle (game.js v32).
+        - New .caucus-ff-btn: off/hover/active states using the same
+          state-driven background/border/box-shadow technique as
+          .gavel-btn; .active uses the existing gold accent.
    v22: Phase 4 Stage 1 wrap fix (game.js v30).
         - .chair-prompt-btn now sets white-space:normal and
           word-wrap:break-word explicitly. The voting-procedure
@@ -1565,6 +1569,37 @@ html, body {
     0%, 100% { box-shadow: 0 3px 0 #7a1a10, 0 0 0 0 rgba(217,63,42,0.6); }
     50%      { box-shadow: 0 3px 0 #7a1a10, 0 0 0 12px rgba(217,63,42,0); }
 }
+
+/* ---- Caucus fast-forward toggle (v32, icon-only) ---- */
+.caucus-ff-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 2px solid #4a4a48;
+    background: #eeece5;
+    color: #4a4a48;
+    border-radius: 3px;
+    cursor: pointer;
+    box-shadow: 0 3px 0 #4a4a48;
+    transition: transform 0.08s ease, box-shadow 0.08s ease,
+                background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+    position: relative;
+    z-index: 2;
+    flex-shrink: 0;
+}
+.caucus-ff-btn:hover { background: #e2dfd2; }
+.caucus-ff-btn:active { transform: translateY(1px); box-shadow: 0 1px 0 #4a4a48; }
+.caucus-ff-btn .caucus-ff-icon { font-size: 1.3rem; line-height: 1; }
+.caucus-ff-btn.active {
+    background: var(--gold-soft);
+    color: #5c4813;
+    border-color: var(--gold);
+    box-shadow: 0 3px 0 var(--gold);
+}
+.caucus-ff-btn.active:hover { background: #eeda9f; }
 
 /* ---- Thud bubbles ---- */
 .thud-layer {
