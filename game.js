@@ -1,5 +1,74 @@
 /* ==========================================================
    POINT OF ORDER — Game Logic
+   v33: Phase 4 Stage 2 — directive reading + for/against speaker
+        selection for paper 1 only (style.css v24, index.html
+        unchanged from v13). Amendments, voting, and paper 2 are NOT
+        part of this pass — see DESIGN.md §8.8.
+        - Replaces the old Stage 1 dead end (showVotingStage1Placeholder,
+          removed): handlePassProceed's votingMode branch now calls
+          startPhase4Stage2(motion) once an amendment-bearing motion
+          passes, instead of stopping at a placeholder immediately.
+        - New PAPER_NAMES table, keyed by the same 4 topic buckets
+          Phase 3's caucus dialogue uses.
+        - buildStage2Papers(motion): builds two paper objects from
+          Phase 3's blocs. Submission order is fixed (Bloc A = paper
+          index 0, Bloc B = paper index 1); the motion's order/reverse
+          field only determines PROCESSING order (which one is read
+          first), stored separately as processingOrder.
+        - state.p2.priorCaucus: startPhase4() now stashes
+          state.p2.caucus (blocs + topicBucket) before
+          initPhase2State() wipes it, mirroring startPhase3()'s
+          priorTopic stash. devSkipTo(4) fakes a minimal caucus shell
+          via assignBlocs() directly, since a fresh dev-skip has no
+          real Phase 3 state to pull from (mirrors Phase 3's dev-skip
+          faking a topic bucket).
+        - Per-paper flow (new p2.stage values: stage2_reading,
+          stage2_announcing_for, stage2_selecting_for,
+          stage2_announcing_against, stage2_selecting_against):
+          golden "read the paper" button -> gold dilatory-style "2
+          for" button -> click-2-of-3 selection (slacker excluded)
+          -> gold dilatory-style "2 against" button -> click-2-of-3
+          selection from the OTHER bloc. New
+          applyStage2RaisePool()/clearStage2RaisePool()/
+          onDelegateClickForStage2() mirror the existing mod
+          speaker-selection click pattern (buildRound1RaisePool/
+          applyRaisePool/onDelegateClickForSpeaker) but write into
+          paper.forSpeakers/againstSpeakers by first-empty-slot, which
+          preserves click order (forward-compat requirement: speech
+          order is derived from array position later, never
+          re-derived).
+        - The motions agenda (#agenda-list) is left alone through Stage
+          2 — it keeps showing the 3 motions with pass/fail styling
+          exactly like Phase 2's does, never cleared or replaced.
+          For/against selection instead reuses the existing
+          #speakers-panel/#speakers-list sidebar (the same one Phase
+          2's mod speeches populate): new renderStage2SpeakersPanel()
+          puts the paper name in the existing #speakers-motion-label
+          slot, then a "For:" subsection once selection for it has
+          started (paper._forStarted), then "Against:" once that's
+          started, each independently numbered 1./2. — written
+          explicitly per slot rather than via the shared CSS counter,
+          since a counter-reset on the subheader row didn't actually
+          restart the count for later siblings in testing. Slots fill
+          progressively as each pick is made,
+          reusing the panel's existing .just-filled flash animation.
+        - finishStage2FirstPaper(): stops after the first paper in
+          PROCESSING order (not necessarily Bloc A's paper — "paper
+          1" in the forward-compat notes means "whichever paper
+          processes first") has both for/against speakers picked.
+          Reuses #post-motions-screen with .star-result hidden (no
+          scoring yet) and a new renderPostMotionsScreen("phase4stage2")
+          case: disabled dead-end button, "Stage 3 (amendments +
+          vote) not yet built." (replaces the old "phase4stage1"
+          case's "Stage 2 (Q&A) not yet built." button, since Stage 2
+          is now built).
+        - Forward-compat: paper objects never mutate delegate.
+          personality/boss, bloc.leader, or their own .bloc reference;
+          a future stage computes each speaker's rhetorical role from
+          those fields on the fly, so nothing here may let them decay.
+        - clearRoomForSpeakerSelection() also strips the new
+          onDelegateClickForStage2 listener now, so it's a safe
+          catch-all between any two sub-phases that reuse the room.
    v32: Phase 3 caucus fast-forward toggle (style.css v23,
         index.html unchanged from v13).
         - New sp.ffActive flag on the caucus's speeches object. A new
@@ -477,6 +546,18 @@ const CAUCUS_FF_MULTIPLIER      = 3;     // v32 — fast-forward speed for both 
 const VOTING_ORDERS = ["submitted", "reverse"];
 const VOTING_SECONDS = [30, 60];
 const VOTING_AMENDMENTS = [true, false];
+
+/* ==========================================================
+   PHASE 4 STAGE 2 — DIRECTIVE PAPER NAMES (v33)
+   Keyed by the same 4 topic buckets Phase 3's caucus dialogue uses
+   (see TOPIC_BUCKETS), one name per bloc-leader type.
+========================================================== */
+const PAPER_NAMES = {
+    substance: { power: "Sanctions Enforcement Framework", carolina: "Fund Me Maybe" },
+    process:   { power: "Next Steps Protocol", carolina: "Define and Conquer" },
+    people:    { power: "Humanitarian Relief Framework", carolina: "Heart of the Matter" },
+    opening:   { power: "Joint Position Statement", carolina: "Position Yourself" },
+};
 
 // ---------- DATA POOLS ----------
 const COMMITTEES = [
@@ -1224,6 +1305,8 @@ function initPhase2State() {
         votingMode: false,
         priorTopic: null,
         caucus: null,
+        priorCaucus: null,
+        stage2: null,
     };
 }
 
@@ -1567,6 +1650,45 @@ function renderMotionsDais() {
 
         case "unmod_caucus": {
             renderCaucusDais(bar);
+            break;
+        }
+
+        // v33 — Phase 4 Stage 2
+        case "stage2_reading": {
+            const paper = currentStage2Paper();
+            const btn = daisButton(`I will now read out the paper called ${paper.name}.`);
+            btn.addEventListener("click", () => {
+                p2.stage = "stage2_announcing_for";
+                renderMotionsDais();
+            });
+            bar.appendChild(btn);
+            break;
+        }
+        case "stage2_announcing_for": {
+            const btn = daisButton(`I will now be taking 2 <b>for</b> speakers.`, "dilatory");
+            btn.addEventListener("click", () => beginStage2Selection("for"));
+            bar.appendChild(btn);
+            break;
+        }
+        case "stage2_selecting_for":
+        case "stage2_selecting_against": {
+            const kind = p2.stage2.selectingKind;
+            const paper = currentStage2Paper();
+            const arr = kind === "for" ? paper.forSpeakers : paper.againstSpeakers;
+            const filled = arr.filter(x => x != null).length;
+            const status = daisStatus(
+                `Select the <span class="prompt-emph">${kind}</span> speakers &nbsp; ` +
+                `<span class="tally">${filled} / 2</span> &nbsp; ` +
+                `<span class="hint">Click a raised placard.</span>`
+            );
+            status.id = "stage2-selection-status";
+            bar.appendChild(status);
+            break;
+        }
+        case "stage2_announcing_against": {
+            const btn = daisButton(`I will now be taking 2 <b>against</b> speakers.`, "dilatory");
+            btn.addEventListener("click", () => beginStage2Selection("against"));
+            bar.appendChild(btn);
             break;
         }
     }
@@ -1946,10 +2068,11 @@ function handlePassProceed() {
         const motion = p2.motionsCollected[p2.currentMotionIdx];
         startUnmodCaucus(motion);
     } else if (p2.votingMode) {
-        // v30 — Stage 1 dead end. Only reachable via an amendment-bearing
-        // motion, since non-amendment motions never pass.
+        // v33 — route into Stage 2 (was the Stage 1 dead end through v32).
+        // Only reachable via an amendment-bearing motion, since
+        // non-amendment motions never pass.
         const motion = p2.motionsCollected[p2.currentMotionIdx];
-        showVotingStage1Placeholder(motion);
+        startPhase4Stage2(motion);
     } else {
         enterSpeakerSelection();
     }
@@ -2539,6 +2662,7 @@ function clearRoomForSpeakerSelection() {
         s.removeEventListener("click", onDelegateClickForMotion);
         s.removeEventListener("click", onDelegateClickForSpeaker);
         s.removeEventListener("click", onSeatClickForRecognition);
+        s.removeEventListener("click", onDelegateClickForStage2); // v33
     });
     document.querySelectorAll("#committee-room-p2 .speech-bubble").forEach(b => b.remove());
 }
@@ -2972,10 +3096,16 @@ function startPhase3() {
 //  PHASE 4 STAGE 1 — MOTIONS & VOTE (v30)
 // ==========================================================
 function startPhase4() {
+    // v33 — preserve Phase 3's blocs/topicBucket before init wipes state.p2;
+    // Stage 2 builds its two papers from these. Mirrors startPhase3()'s
+    // priorTopic stash.
+    const priorCaucus = state.p2 && state.p2.caucus;
+
     showScreen("motions-screen");
     initPhase2State();
     state.p2.votingMode = true;
     state.p2.unmodMode = false; // v30 — the two flags never overlap.
+    state.p2.priorCaucus = priorCaucus;
 
     const label = document.getElementById("motions-phase-label");
     if (label) label.textContent = "Phase 4 of 5 · Voting Procedure";
@@ -3005,24 +3135,265 @@ function startPhase4() {
     updateMotionsInstructions("Ask the floor for motions.");
 }
 
-// v30 — Stage 1 dead end: only reachable once a player votes through to
-// an amendment-bearing motion. No speaker selection, no Q&A, no debrief
-// scoring; see DESIGN.md §8.75 and §11 non-goals for this pass.
-function showVotingStage1Placeholder(motion) {
+// ==========================================================
+//  PHASE 4 STAGE 2 — DIRECTIVE READING + FOR/AGAINST SELECTION (v33)
+// ==========================================================
+// v33 — replaces the old Stage 1 dead end (showVotingStage1Placeholder).
+// Only reachable once a player votes through to an amendment-bearing
+// motion. Builds two directive papers from Phase 3's blocs and walks
+// through reading + for/against speaker selection for whichever paper
+// processes first; stops at a temporary placeholder after that paper's
+// against speakers are picked (Stage 3 — amendments/vote — and paper 2
+// are not yet built). See DESIGN.md §8.8.
+
+function buildStage2Papers(motion) {
+    const priorCaucus = state.p2.priorCaucus;
+    const blocs = (priorCaucus && priorCaucus.blocs) || assignBlocs();
+    const topicBucket = (priorCaucus && priorCaucus.topicBucket) || "substance";
+    const blocA = blocs.find(b => b.side === "A");
+    const blocB = blocs.find(b => b.side === "B");
+
+    function buildPaper(ownBloc, otherBloc) {
+        return {
+            bloc: ownBloc,
+            leader: ownBloc.leader,
+            name: PAPER_NAMES[topicBucket][ownBloc.leader],
+            forGroup: ownBloc.delegates.filter(d => d.personality !== "slacker"),
+            againstGroup: otherBloc.delegates.filter(d => d.personality !== "slacker"),
+            forSpeakers: [null, null],
+            againstSpeakers: [null, null],
+            // Internal bookkeeping only (not part of the spec'd shape):
+            // whether this paper's for/against agenda subsection has
+            // started rendering yet.
+            _forStarted: false,
+            _againstStarted: false,
+        };
+    }
+
+    // Submission order convention: Bloc A is always paper 1 (index 0),
+    // Bloc B is always paper 2 (index 1). The motion's order/reverse
+    // field only determines PROCESSING order, not this indexing.
+    const paper1 = buildPaper(blocA, blocB);
+    const paper2 = buildPaper(blocB, blocA);
+    const processingOrder = motion.order === "reverse" ? [1, 0] : [0, 1];
+
+    return { papers: [paper1, paper2], processingOrder };
+}
+
+function currentStage2Paper() {
+    const s2 = state.p2.stage2;
+    return s2.papers[s2.processingOrder[s2.processingIdx]];
+}
+
+function startPhase4Stage2(motion) {
+    const p2 = state.p2;
+    const { papers, processingOrder } = buildStage2Papers(motion);
+    p2.stage2 = {
+        papers,
+        processingOrder,
+        processingIdx: 0,
+        motion, // seconds/amendment are motion-level, not per-paper — read from here
+        selectingKind: null,
+        raisedPool: [],
+    };
+    clearRoomForSpeakerSelection();
+    enterStage2Paper(0);
+}
+
+function enterStage2Paper(processingIdx) {
+    const p2 = state.p2;
+    p2.stage2.processingIdx = processingIdx;
+    p2.stage = "stage2_reading";
+    // v33 — the motions agenda is untouched from here on; just re-render
+    // it once for robustness. The speakers panel shows the paper name
+    // immediately (with no For:/Against: subsections yet).
+    renderAgenda();
+    renderStage2SpeakersPanel();
+    renderMotionsDais();
+    updateMotionsInstructions("Read the paper into the record.");
+}
+
+function beginStage2Selection(kind) {
+    const p2 = state.p2;
+    const paper = currentStage2Paper();
+    const group = kind === "for" ? paper.forGroup : paper.againstGroup;
+    if (kind === "for") paper._forStarted = true;
+    else paper._againstStarted = true;
+
+    p2.stage2.selectingKind = kind;
+    applyStage2RaisePool(group.map(d => delegateIndexOf(d)));
+    p2.stage = kind === "for" ? "stage2_selecting_for" : "stage2_selecting_against";
+    updateMotionsInstructions(
+        kind === "for" ? "Select the two for speakers." : "Select the two against speakers."
+    );
+    renderStage2SpeakersPanel();
+    renderMotionsDais();
+}
+
+function applyStage2RaisePool(pool) {
+    const p2 = state.p2;
+    p2.stage2.raisedPool = [...pool];
+    pool.forEach(idx => {
+        const seat = getSeatElement(idx, "committee-room-p2");
+        if (!seat) return;
+        const del = state.delegates[idx];
+        const variant = (del.personality === "power" || del.personality === "demboy")
+            ? "raised-voting" : "raised";
+        seat.classList.add(variant, "requesting");
+        seat.addEventListener("click", onDelegateClickForStage2);
+    });
+}
+
+function clearStage2RaisePool() {
+    const p2 = state.p2;
+    (p2.stage2.raisedPool || []).forEach(idx => {
+        const seat = getSeatElement(idx, "committee-room-p2");
+        if (!seat) return;
+        seat.classList.remove("raised", "raised-voting", "requesting");
+        seat.removeEventListener("click", onDelegateClickForStage2);
+    });
+    p2.stage2.raisedPool = [];
+}
+
+function onDelegateClickForStage2(e) {
+    const p2 = state.p2;
+    if (p2.stage !== "stage2_selecting_for" && p2.stage !== "stage2_selecting_against") return;
+    const seat = e.currentTarget;
+    const idx = parseInt(seat.dataset.index, 10);
+    if (!p2.stage2.raisedPool.includes(idx)) return;
+
+    seat.classList.remove("raised", "raised-voting", "requesting");
+    seat.removeEventListener("click", onDelegateClickForStage2);
+    p2.stage2.raisedPool = p2.stage2.raisedPool.filter(i => i !== idx);
+
+    const paper = currentStage2Paper();
+    const kind = p2.stage2.selectingKind;
+    const arr = kind === "for" ? paper.forSpeakers : paper.againstSpeakers;
+    const slot = arr.indexOf(null);
+    if (slot !== -1) arr[slot] = idx; // click order preserved: first empty slot wins
+
+    renderStage2SpeakersPanel(slot);
+    updateStage2SelectionCounter();
+
+    const filled = arr.filter(x => x != null).length;
+    if (filled >= 2) {
+        clearStage2RaisePool();
+        setTimeout(() => {
+            if (kind === "for") {
+                p2.stage = "stage2_announcing_against";
+                renderMotionsDais();
+            } else {
+                finishStage2FirstPaper();
+            }
+        }, 350);
+    }
+}
+
+function updateStage2SelectionCounter() {
+    const p2 = state.p2;
+    const status = document.getElementById("stage2-selection-status");
+    if (!status) return;
+    const tally = status.querySelector(".tally");
+    if (!tally) return;
+    const paper = currentStage2Paper();
+    const kind = p2.stage2.selectingKind;
+    const arr = kind === "for" ? paper.forSpeakers : paper.againstSpeakers;
+    tally.textContent = `${arr.filter(x => x != null).length} / 2`;
+}
+
+// v33 — for this pass, the stage always stops here regardless of which
+// paper (array-index 0 or 1) happened to process first; "paper 1" in the
+// forward-compat spec means "whichever paper is first in PROCESSING
+// order," not necessarily Bloc A's paper. Stage 3 (amendments + vote)
+// and paper 2's announcement are not yet built.
+function finishStage2FirstPaper() {
+    const p2 = state.p2;
+    const paper = currentStage2Paper();
+    p2.stage = "stage2_done";
+
     const titleEl = document.querySelector("#post-motions-screen .phase-title");
-    if (titleEl) titleEl.textContent = "Voting Procedure Established";
+    if (titleEl) titleEl.textContent = "Speakers Selected";
     const flavorEl = document.getElementById("post-motions-flavor");
     if (flavorEl) {
         flavorEl.innerHTML =
-            `The committee adopts <strong>${motion.delegate.country}'s motion</strong>: ` +
-            `<em>${motion.spoken}</em>`;
+            `For/against speakers for <strong>${paper.name}</strong> are set.`;
     }
     // No debrief scoring exists yet for this partial phase.
     const starResult = document.querySelector("#post-motions-screen .star-result");
     if (starResult) starResult.style.display = "none";
 
-    renderPostMotionsScreen("phase4stage1");
+    renderPostMotionsScreen("phase4stage2");
     showScreen("post-motions-screen");
+}
+
+// ----- Stage 2 speakers-panel rendering -----
+// v33 — the motions agenda (#agenda-list) is left alone through Stage 2:
+// it already shows the 3 motions with pass/fail styling exactly like
+// Phase 2, and nothing about entering Stage 2 should clear or replace it
+// (renderAgenda() is called once on entry purely for robustness; nothing
+// in Stage 2 touches #agenda-list again after that). For/against
+// selection reuses the existing #speakers-panel/#speakers-list sidebar
+// (the same one Phase 2's mod speeches populate) instead of inventing new
+// markup inside the agenda: paper name goes in the existing
+// #speakers-motion-label slot, then a "For:"/"Against:" grouped,
+// independently-numbered list (1./2. each). Numbering is written
+// explicitly per slot (i + 1) rather than via the speakers-list's shared
+// CSS counter — a per-group counter-reset on the subheader row did NOT
+// actually restart the shared counter for later siblings in testing (it
+// kept counting 1,2,3,4 straight through both groups), so this sidesteps
+// that entirely instead of relying on a counter-scoping behavior that
+// didn't hold up.
+function renderStage2SpeakersPanel(justFilledSlot) {
+    const panel = document.getElementById("speakers-panel");
+    const list = document.getElementById("speakers-list");
+    const label = document.getElementById("speakers-motion-label");
+    const p2 = state.p2;
+    const s2 = p2.stage2;
+    if (!panel || !list || !s2) return;
+
+    const paper = currentStage2Paper();
+    panel.hidden = false;
+    if (label) label.textContent = paper.name;
+
+    const kind = s2.selectingKind;
+    list.innerHTML = "";
+    if (paper._forStarted) {
+        list.appendChild(buildSpeakersSubheader("For:"));
+        paper.forSpeakers.forEach((idx, i) => {
+            list.appendChild(buildStage2SpeakerSlot(idx, i, kind === "for" && i === justFilledSlot));
+        });
+    }
+    if (paper._againstStarted) {
+        list.appendChild(buildSpeakersSubheader("Against:"));
+        paper.againstSpeakers.forEach((idx, i) => {
+            list.appendChild(buildStage2SpeakerSlot(idx, i, kind === "against" && i === justFilledSlot));
+        });
+    }
+}
+
+function buildSpeakersSubheader(text) {
+    const li = document.createElement("li");
+    li.className = "speakers-subheader";
+    li.textContent = text;
+    return li;
+}
+
+function buildStage2SpeakerSlot(idx, i, justFilled) {
+    const li = document.createElement("li");
+    li.className = "stage2-slot";
+    const num = document.createElement("span");
+    num.className = "speakers-num";
+    num.textContent = `${i + 1}.`;
+    li.appendChild(num);
+    if (idx == null) {
+        li.classList.add("empty-slot");
+    } else {
+        const nameSpan = document.createElement("span");
+        nameSpan.textContent = state.delegates[idx].country;
+        li.appendChild(nameSpan);
+        if (justFilled) li.classList.add("just-filled");
+    }
+    return li;
 }
 
 // ==========================================================
@@ -3641,9 +4012,10 @@ function renderPostMotionsScreen(phase) {
         // Phase 4 Stage 1 instead.
         fresh.textContent = "Proceed to Voting Procedure →";
         fresh.addEventListener("click", startPhase4);
-    } else if (phase === "phase4stage1") {
-        // v30 — genuine dead end for this pass. Disabled, no handler.
-        fresh.textContent = "Stage 2 (Q&A) not yet built.";
+    } else if (phase === "phase4stage2") {
+        // v33 — genuine dead end for this pass (Stage 3: amendments +
+        // vote, and paper 2, not yet built). Disabled, no handler.
+        fresh.textContent = "Stage 3 (amendments + vote) not yet built.";
         fresh.disabled = true;
     } else {
         // Fallback for any future terminal phase.
@@ -3776,10 +4148,18 @@ function devSkipTo(phase) {
         return;
     }
     if (phase === 4) {
-        // v30 — startPhase4() doesn't depend on any prior Phase 2/3 state
-        // (fresh initPhase2State() every time), so dev-skip can jump
-        // straight there once Phase 1 is auto-completed.
         devAutoCompletePhase1();
+        // v33 — Stage 2 builds its two papers from Phase 3's bloc
+        // assignment (state.p2.caucus.blocs/topicBucket), which doesn't
+        // exist on a fresh dev-skip. Fake a minimal caucus shell via
+        // assignBlocs() directly, mirroring how Phase 3's dev-skip fakes
+        // a speakersMotion.topic for the caucus dialogue bucket.
+        state.p2 = {
+            caucus: {
+                blocs: assignBlocs(),
+                topicBucket: pick(Object.keys(PAPER_NAMES)),
+            },
+        };
         startPhase4();
         return;
     }

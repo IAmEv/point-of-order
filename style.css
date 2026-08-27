@@ -1,6 +1,23 @@
 /* ========================================================
    POINT OF ORDER — A UNCMUNC Chair Simulator
-   style.css — v23
+   style.css — v24
+   v24: Phase 4 Stage 2 speakers-panel styling (game.js v33).
+        - New .speakers-list li.speakers-subheader: labels "For:"/
+          "Against:" groups inside the existing #speakers-list
+          (reused from Phase 2's mod speeches, not a new panel).
+        - New .speakers-list li.stage2-slot / .speakers-num: each
+          group's 1./2. numbering is written explicitly per slot in
+          JS rather than via the shared CSS counter (a counter-reset
+          on the subheader didn't actually restart the count for
+          later siblings), so .stage2-slot suppresses the
+          counter-based ::before and shows its own .speakers-num
+          span instead. The existing .empty-slot/.just-filled
+          styles on speakers-list li apply unchanged.
+        - .speakers-header's "Speakers List" label gets
+          white-space:nowrap + flex-shrink:0 so it stops wrapping to
+          two lines now that the adjacent motion-label can hold a
+          long directive paper name (e.g. "Humanitarian Relief
+          Framework") instead of a short mod-motion string.
    v23: Phase 3 caucus fast-forward toggle (game.js v32).
         - New .caucus-ff-btn: off/hover/active states using the same
           state-driven background/border/box-shadow technique as
@@ -869,6 +886,41 @@ html, body {
     font-family: 'Lora', serif !important;
 }
 
+/* ---- Phase 4 Stage 2: speakers-list "For:"/"Against:" groups (v33) ----
+   Reuses the existing #speakers-panel/#speakers-list sidebar (same one
+   Phase 2's mod speeches populate). Numbering is written explicitly per
+   slot in JS (.speakers-num) rather than the shared CSS counter — a
+   counter-reset on the subheader row did not actually restart the count
+   for later siblings in testing, so .stage2-slot suppresses the
+   counter-based ::before entirely and uses its own explicit number. */
+.speakers-list li.speakers-subheader {
+    counter-increment: none;
+    font-family: 'Special Elite', monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    border-bottom: none;
+    min-height: 0;
+    padding: 0.4rem 0.4rem 0.15rem;
+}
+.speakers-list li.speakers-subheader:first-child {
+    padding-top: 0;
+}
+.speakers-list li.speakers-subheader::before {
+    content: none;
+}
+.speakers-list li.stage2-slot::before {
+    content: none;
+}
+.speakers-list li.stage2-slot .speakers-num {
+    font-family: 'Special Elite', monospace;
+    font-size: 0.78rem;
+    color: #8a7a63;
+    min-width: 1.5rem;
+    text-align: right;
+}
+
 /* ---------- MOTIONS DAIS BAR ---------- */
 .motions-dais-bar {
     background: white;
@@ -1238,12 +1290,17 @@ html, body {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
+    gap: 0.5rem;
     font-family: 'Special Elite', monospace;
     font-size: 0.72rem;
     letter-spacing: 0.14em;
     text-transform: uppercase;
     color: #6a5540;
     margin-bottom: 0.4rem;
+}
+.speakers-header > span:first-child {
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 .speakers-header .speakers-motion-label {
     font-family: 'Lora', serif;

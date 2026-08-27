@@ -6,8 +6,8 @@
 
 ## 0. Current Versions (Source of Truth)
 
-- `game.js` — **v32**
-- `style.css` — **v23**
+- `game.js` — **v33**
+- `style.css` — **v24**
 - `index.html` — **v13**
 
 When starting a fresh chat: read this doc first, then confirm the version headers in each file match the numbers above. If they don't, flag the mismatch before making changes.
@@ -105,7 +105,7 @@ Phase 3 unmod motions never trigger the dilatory or mod-correction thuds (those 
 | 1 | Roll Call | ~1–2 min | Alphabetical calling, present/P&V/absent distinction, the "here" correction | ✅ Built |
 | 2 | Points & Motions → Vote → Speaker Selection → Speeches | ~5–8 min | Motion formats, dilatory rulings, disruptiveness ordering, voting, speaker-list construction, repeat-speaker discipline, speech timing and gavel discipline | ✅ Built |
 | 3 | Unmoderated Caucus (Motion Collection → Vote → Caucus) | ~3–4 min | Same motion/vote loop for unmods only; caucus-time management; **bloc leadership assessment**; warning + gavel timing on a compressed clock | ✅ Built (v23) |
-| 4 | Voting Procedure (Stage 1: Motion → Vote only) | TBD | Same motion/vote loop for voting-procedure motions (order, 2-for/2-against speaking time, amendment period); disruptiveness ranking with a 3-part tiebreak | 🚧 Stage 1 built (v30); Stage 2 (2-for/2-against speeches), amendments, and the final vote not started |
+| 4 | Voting Procedure (Stage 1: Motion → Vote; Stage 2: directive reading + for/against speaker selection) | TBD | Motion/vote loop for voting-procedure motions; directive-paper reading and for/against speaker selection (slacker-excluded, click-order-preserving) | 🚧 Stage 1 built (v30); Stage 2 built for paper 1 only (v33); actual speeches, amendments, paper 2, and the final vote not started |
 | — | Debrief | ~30 sec | Star summary across all phases | 🚧 Per-phase debriefs built; global debrief planned |
 
 **Explicitly deferred:** a standalone *Crisis Break* phase.
@@ -309,7 +309,7 @@ Renders into `#phase2-stars` / `#phase2-summary` (reused). Post-motions title be
 
 ## 8.75. Phase 4 Stage 1: Voting Procedure (Motion → Vote only), Full Spec (v30)
 
-**This is a partial phase.** Only motion proposition through a passing vote is built. Stage 2 (the 2-for/2-against speech loop), amendment-period mechanics, and the final vote are explicitly not implemented; reaching a passing vote lands on a temporary dead-end placeholder screen. See "Non-Goals for This Pass" below.
+**This is a partial phase.** Motion proposition through a passing vote is built, and (v33) so is Stage 2's directive reading + for/against speaker selection for whichever paper processes first — see §8.8. Amendment-period mechanics, the actual speeches, paper 2, and the final vote are explicitly not implemented yet. See "Non-Goals for This Pass" below.
 
 Phase 4 reuses the Phase 2/3 `#motions-screen` DOM throughout, gated by `state.p2.votingMode = true`. `unmodMode` and `votingMode` are mutually exclusive; `startPhase3()` and `startPhase4()` each explicitly clear the other flag so the two substates can never overlap.
 
@@ -396,25 +396,110 @@ Unlike Phase 2/3's fail-fail-pass retry pattern (`voteAttempt >= 2` forces a pas
 
 This is independent of disruptiveness-order grading — the player is still scored on whether they called the vote on the most disruptive unresolved motion each time (`orderPicks`, unchanged mechanism). The rig only controls the pass/fail roll itself, and guarantees the stage resolves once the player reaches an amendment-bearing motion (which is not necessarily the last one voted on — whichever amendment motion is called first ends the stage).
 
-### Stage 1 Exit (temporary placeholder, dead end)
+### Stage 1 → Stage 2 Handoff (v33)
 
-When an amendment-bearing motion passes and the player clicks **Proceed →**, `handlePassProceed()`'s `votingMode` branch calls `showVotingStage1Placeholder(motion)` instead of `enterSpeakerSelection()`/`startUnmodCaucus()`. This is a genuine dead end for this pass:
-
-- Title: *"Voting Procedure Established"*.
-- Flavor line: `The committee adopts **{country}'s motion**: {spoken}` (reuses `post-motions-flavor`).
-- The `.star-result` block is hidden entirely (`display: none`) — no debrief scoring exists yet for this partial phase. (This is the first real use of the `display:none` hook a v23-era comment in `finishPhase2` had anticipated but never triggered.)
-- `renderPostMotionsScreen("phase4stage1")` sets `#restart-btn` to a disabled button reading *"Stage 2 (Q&A) not yet built."* — no click handler, no further state transition.
+When an amendment-bearing motion passes and the player clicks **Proceed →**, `handlePassProceed()`'s `votingMode` branch calls `startPhase4Stage2(motion)` instead of `enterSpeakerSelection()`/`startUnmodCaucus()`. Through v32 this used to be a genuine dead end (`showVotingStage1Placeholder`, since removed); as of v33 it instead flows directly into Stage 2 — see §8.8.
 
 ### Dev Mode
 
-Dev-panel "4 · Voting" is enabled (index.html v13). `devSkipTo(4)` auto-completes Phase 1 and calls `startPhase4()` directly — no faked prior-phase state is needed since `startPhase4()` always does a fresh `initPhase2State()`, unlike Phase 3's dev-skip which fakes a `speakersMotion.topic` for the caucus dialogue bucket.
+Dev-panel "4 · Voting" is enabled (index.html v13). `devSkipTo(4)` auto-completes Phase 1, then (v33) fakes a minimal `state.p2.caucus` shell (`{ blocs: assignBlocs(), topicBucket: <random> }`) before calling `startPhase4()`, since Stage 2 needs Phase 3's bloc assignment to build its papers and a fresh dev-skip has no real Phase 3 state to draw from — mirrors how Phase 3's own dev-skip fakes a `speakersMotion.topic` for the caucus dialogue bucket. (Through v32, Stage 1 alone had no such dependency and no faking was needed.)
 
 ### Non-Goals for This Pass
 
-- No Stage 2 speech loop (the 2-for/2-against podium sequence, speaking-time enforcement).
 - No amendment-period mechanics (the 30-sec amendment flag is stored and displayed but does nothing yet).
-- No speaker order construction.
 - No final vote.
+- No debrief/star scoring for Phase 4 yet.
+
+(Speaker selection is now built — see §8.8's own non-goals for what Stage 2 still leaves out, e.g. the actual speeches.)
+
+---
+
+## 8.8. Phase 4 Stage 2: Directive Reading + For/Against Speaker Selection (Paper 1 Only), Full Spec (v33)
+
+**This is a partial stage.** Only directive-paper reading and for/against speaker selection are built, and only for whichever paper processes first. Amendment-period mechanics, the actual speeches, paper 2, and the final vote are not implemented; selection completing for the first-processed paper lands on a temporary dead-end placeholder. See "Non-Goals for This Pass" below.
+
+Stage 2 continues to reuse the Phase 2/3/4-Stage-1 `#motions-screen` DOM (same committee room, same `#motions-dais-bar`), gated by `state.p2.stage2` being non-null. The motions agenda (`#agenda-list`) is left untouched — it keeps showing the 3 motions with pass/fail styling exactly like Phase 2, never cleared or replaced. For/against selection reuses the existing `#speakers-panel`/`#speakers-list` sidebar instead — the same one Phase 2's mod speeches populate — rather than inventing new markup inside the agenda.
+
+### Two-Paper Data Model
+
+```js
+{
+  bloc: <ref to bloc>,
+  leader: "power" | "carolina",
+  name: PAPER_NAMES[caucus.topicBucket][leader],
+  forGroup: [...bloc.delegates minus slacker],
+  againstGroup: [...otherBloc.delegates minus slacker],
+  forSpeakers: [null, null],
+  againstSpeakers: [null, null],
+}
+```
+
+`PAPER_NAMES` is keyed by the same 4 topic buckets Phase 3's caucus dialogue uses:
+
+```js
+{
+  substance: { power: "Sanctions Enforcement Framework", carolina: "Fund Me Maybe" },
+  process:   { power: "Next Steps Protocol", carolina: "Define and Conquer" },
+  people:    { power: "Humanitarian Relief Framework", carolina: "Heart of the Matter" },
+  opening:   { power: "Joint Position Statement", carolina: "Position Yourself" },
+}
+```
+
+**Submission order** is fixed regardless of motion content: Bloc A (`side: "A"` in `BLOC_LAYOUT`) is always paper index 0 ("paper 1"), Bloc B is always paper index 1 ("paper 2"). The passed motion's `order` field determines **processing** order only, stored separately as `processingOrder`: `"submitted"` → `[0, 1]` (paper 1 read first); `"reverse"` → `[1, 0]` (paper 2 read first). Both papers share the passed motion's `seconds` and `amendment` values — these are motion-level properties (read from `state.p2.stage2.motion`), never duplicated onto the paper objects.
+
+`buildStage2Papers(motion)` pulls blocs from `state.p2.priorCaucus` (see "Data Handoff" below), builds both paper objects, and computes `processingOrder`. Two bookkeeping-only fields not in the spec'd shape above, `_forStarted`/`_againstStarted`, track whether each paper's speakers-panel subsection has started rendering.
+
+### Data Handoff from Phase 3
+
+`state.p2.caucus` (the live bloc assignment) is normally wiped when `startPhase4()` calls `initPhase2State()`. `startPhase4()` now stashes it into a local variable **before** that call and re-attaches it as `state.p2.priorCaucus` afterward — the same pattern `startPhase3()` already used to carry `priorTopic` across its own `initPhase2State()` wipe. `buildStage2Papers()` reads `priorCaucus.blocs`/`priorCaucus.topicBucket`.
+
+### Per-Paper Flow
+
+Runs once per paper, sequentially, for whichever paper is up next in `processingOrder`. New `p2.stage` values drive `renderMotionsDais()`:
+
+1. **`stage2_reading`** — a golden chair-speaking button (the default `.chair-prompt-btn` gold/italic treatment, no `.dilatory` class needed): *"I will now read out the paper called [name]."* Click advances to announcing "for."
+2. **`stage2_announcing_for`** — a gold button with the `.dilatory` class (same visual treatment as the existing dilatory-ruling emphasis: bold + underlined, non-italic, on just the emphasized word): *"I will now be taking 2 **for** speakers."* Click raises every delegate in `forGroup` (slacker always excluded, per bloc, regardless of which paper) and advances to selection.
+3. **`stage2_selecting_for`** — player clicks 2 of the 3 raised placards, same interaction pattern as mod speaker selection (`applyStage2RaisePool`/`onDelegateClickForStage2`, mirroring `applyRaisePool`/`onDelegateClickForSpeaker`). Each click fills the first `null` slot in `forSpeakers`, so **click order is preserved as array order** (forward-compat requirement — see below). `#speakers-list` shows a new "For:" subheader row once selection starts (`paper._forStarted = true`), with two explicitly-numbered (1./2.) slots below it filling in progressively as each pick is made (reuses the panel's existing `.just-filled` flash animation) rather than appearing atomically once both are picked.
+4. **`stage2_announcing_against`** — same gold `.dilatory` treatment: *"I will now be taking 2 **against** speakers."* Click raises every delegate in `againstGroup` (the OTHER bloc, slacker excluded) and advances to selection.
+5. **`stage2_selecting_against`** — same click-2-of-3 pattern, filling `againstSpeakers`. `#speakers-list` gets an "Against:" subheader row below the "For:" group, with its own independently-numbered 1./2. slots.
+
+### Speakers Panel Reuse
+
+`renderStage2SpeakersPanel(justFilledSlot)` populates the existing `#speakers-panel`/`#speakers-list`/`#speakers-motion-label` elements (unhiding the panel, since it's `hidden` by default and otherwise only shown by Phase 2's `renderSpeakersList()`):
+
+- `#speakers-motion-label` gets the current paper's `name` (reusing the exact slot that shows a mod motion's `written` text in Phase 2).
+- `#speakers-list` gets a `.speakers-subheader` `<li>` ("For:" or "Against:") followed by that group's speaker slots.
+- **Numbering is written explicitly per slot** (`${i + 1}.` via a `.speakers-num` span), not through the list's shared CSS counter — a `counter-reset` on the subheader row was tried first but did not actually restart the count for later siblings in testing (it kept incrementing 1,2,3,4 straight through both groups instead of resetting to 1,2 at "Against:"), so `.stage2-slot` suppresses the counter-based `::before` entirely and renders its own number instead.
+- `.speakers-header`'s "Speakers List" label gained `white-space: nowrap` + `flex-shrink: 0` (style.css v24) since directive paper names (e.g. "Humanitarian Relief Framework") run longer than typical mod-motion strings and were wrapping it to two lines.
+
+### Sequencing Across the Full Stage
+
+Full intended order of events (only the first bullet is built in this pass): all 4 speaker selections for the first-processed paper → *(stop here for now)* → later, amendments to that paper → later, a vote on that paper → only after that vote resolves, the For/Against subsections clear and the second paper's announcement + speaker selection begins, repeating the same 5-step flow.
+
+Note that "paper 1" in this sequencing sense means **whichever paper is first in `processingOrder`** — not necessarily Bloc A's paper (array index 0). A `"reverse"`-order motion processes Bloc B's paper first, and the stage still stops after *that* paper's against-speakers are picked, regardless of its array index. `finishStage2FirstPaper()` implements this by always stopping after `processingIdx === 0` completes, never checking which bloc that paper belongs to.
+
+### Stage 2 Exit (temporary placeholder, dead end — for this pass)
+
+Once the first-processed paper's against-speakers are both selected, `finishStage2FirstPaper()` reuses `#post-motions-screen`, the same pattern Stage 1's old dead end used:
+
+- Title: *"Speakers Selected"*.
+- Flavor line: `For/against speakers for **{paper.name}** are set.` (reuses `post-motions-flavor`).
+- `.star-result` hidden entirely (`display: none`) — no debrief scoring exists yet for this partial phase.
+- `renderPostMotionsScreen("phase4stage2")` sets `#restart-btn` to a disabled button reading *"Stage 3 (amendments + vote) not yet built."* — no click handler, no further state transition. (Replaces the old `"phase4stage1"` case and its "Stage 2 (Q&A) not yet built." button, now that Stage 2 is built.)
+
+### Forward-Compatibility Requirements
+
+Data must survive intact into future stages that aren't built yet:
+
+- **Speech order is derived from array position, never re-derived later.** `forSpeakers[0] → againstSpeakers[0] → forSpeakers[1] → againstSpeakers[1]` maps directly to first-for → first-against → last-for → last-against. The click-order-preserving fill logic in `onDelegateClickForStage2` is what guarantees this holds.
+- **Nothing in this stage may mutate or reset** `delegate.personality`, `delegate.boss`, `bloc.leader`, or a paper's `.bloc` reference. A future stage computes each speaker's rhetorical role on the fly from those fields (CarolinaMUN-style jokes about their own bloc's paper name; a Power-Del from the authoring bloc self-attributes cleanly, one from the other bloc self-attributes sloppily; a Dem-Boy in a Carolina-led bloc is empowered, one in a Power-led bloc glazes their boss). None of that content logic is part of this pass — it's purely a "don't let the underlying fields decay" requirement.
+
+### Non-Goals for This Pass
+
+- No actual speeches (podium sequence, speaking-time enforcement using the motion's `seconds` value) for the selected for/against speakers.
+- No amendment-period mechanics.
+- No vote on the paper.
+- No paper 2 (the stage stops after the first-processed paper's selection completes).
 - No debrief/star scoring for Phase 4 yet.
 
 ---
@@ -425,7 +510,7 @@ Panel is a yellow sticky note fixed top-right on the briefing screen when `DEV_M
 - 1 · Roll Call (starts fresh Phase 1)
 - 2 · Moderated Caucus (auto-marks Phase 1 correctly, jumps to Phase 2)
 - 3 · Unmod (auto-marks Phase 1, fakes a Phase 2 topic, jumps directly to Phase 3 motion collection)
-- 4 · Voting (v30: auto-marks Phase 1, jumps directly to Phase 4 Stage 1 motion collection; `startPhase4()` has no dependency on prior Phase 2/3 state, so no faking is needed)
+- 4 · Voting (auto-marks Phase 1, jumps directly to Phase 4 Stage 1 motion collection. v33: also fakes a minimal `state.p2.caucus` shell via `assignBlocs()` first, since Stage 2 needs Phase 3's bloc assignment to build its papers; through v32, Stage 1 alone had no such dependency)
 - 5 · Debrief (disabled)
 
 ---
@@ -460,6 +545,7 @@ Single `state` object in `game.js`:
   - Phase 2 fields: motions, selection, speech loop state, `repeatPickCount`
   - Phase 3 fields (v23): `unmodMode`, `priorTopic`, `caucus: { blocs[2], motion, topicBucket, hoveredIdx, lockedIdx, activeIdx }`
   - Phase 4 Stage 1 field (v30): `votingMode` (mutually exclusive with `unmodMode`; each of `startPhase3()`/`startPhase4()` explicitly clears the other)
+  - Phase 4 Stage 2 fields (v33): `priorCaucus` (Phase 3's `caucus` stashed across `startPhase4()`'s `initPhase2State()` wipe, same pattern as `priorTopic`); `stage2: { papers[2], processingOrder, processingIdx, motion, selectingKind, raisedPool }`
   - `speeches`, shared speech-loop object; `caucusMode` flag flips it into caucus behavior
 
 ### Timer Engine
@@ -477,10 +563,10 @@ See §4. `DELEGATE_ART`, `GAVEL_ART`, `GAVEL_SOUND` are the sole points of chang
 `renderStarBlock(containerId, stars, summaryHTML)` injects three SVG stars and sets neighbor `#*-summary` innerHTML (v21). Callers use `buildMultilineSummary(clauses, fallback)`. Phase 3 reuses `#phase2-stars` / `#phase2-summary` on the shared `#post-motions-screen`.
 
 ### Post-Motions Button
-`renderPostMotionsScreen(phase)` (v23, extended v30) rewires `#restart-btn` at runtime:
+`renderPostMotionsScreen(phase)` (v23, extended v30, v33) rewires `#restart-btn` at runtime:
 - `phase === "phase2"`: text "Proceed to Unmods →", handler `startPhase3()`.
 - `phase === "phase3"`: text "Proceed to Voting Procedure →", handler `startPhase4()`.
-- `phase === "phase4stage1"`: text "Stage 2 (Q&A) not yet built.", `disabled = true`, no handler. Dead end for this pass.
+- `phase === "phase4stage2"`: text "Stage 3 (amendments + vote) not yet built.", `disabled = true`, no handler. Dead end for this pass. (Replaces the v30–v32 `"phase4stage1"` case, now that Stage 2 is built.)
 
 Uses `cloneNode` swap to purge any prior click handlers. No static listener on the button.
 
@@ -504,7 +590,15 @@ None.
 
 ## 13. Change Log (Major Milestones)
 
-- **v32 (Phase 3 caucus fast-forward toggle, current)** — Separate from the Phase 4 Stage 1 work: a Phase 3 caucus feature addition. Full spec in §8.5's Fast-Forward Toggle subsection.
+- **v33 (Phase 4 Stage 2: directive reading + for/against speaker selection, paper 1 only, current)** — Replaces the old Stage 1 dead end. Amendments, voting, and paper 2 are explicitly not part of this pass. Full spec, including forward-compat requirements and non-goals, in §8.8.
+    - New `PAPER_NAMES` table (keyed by the same 4 topic buckets Phase 3's caucus dialogue uses) and `buildStage2Papers(motion)`, which builds two paper objects from Phase 3's blocs. Submission order is fixed (Bloc A = paper index 0, Bloc B = index 1); the motion's `order`/`reverse` field only determines processing order (`processingOrder`).
+    - `startPhase4()` now stashes `state.p2.caucus` into `state.p2.priorCaucus` before `initPhase2State()` wipes it, mirroring `startPhase3()`'s `priorTopic` stash. `devSkipTo(4)` fakes a minimal caucus shell via `assignBlocs()` for dev-skip, since Stage 2 (unlike Stage 1 alone) needs real bloc data.
+    - New per-paper flow (`stage2_reading` → `stage2_announcing_for` → `stage2_selecting_for` → `stage2_announcing_against` → `stage2_selecting_against`): golden "read the paper" button, gold dilatory-style "for"/"against" emphasis buttons, click-2-of-3 selection (slacker always excluded) mirroring the existing mod speaker-selection pattern. Click order is preserved as array order (`forSpeakers`/`againstSpeakers`) — a forward-compat requirement for a future stage that derives speech order from array position.
+    - The motions agenda (`#agenda-list`) is left untouched through Stage 2, still showing the 3 motions with pass/fail styling exactly like Phase 2. New `renderStage2SpeakersPanel()` instead reuses the existing `#speakers-panel`/`#speakers-list` sidebar (the same one Phase 2's mod speeches populate): paper name in `#speakers-motion-label`, then progressively-filling "For:"/"Against:" groups, each explicitly numbered 1./2. per slot (a shared-CSS-counter-reset approach was tried first but didn't actually restart the count between groups, so numbering is written directly instead). Reuses the panel's existing `.just-filled` flash animation.
+    - Stops after the first-processed paper (not necessarily Bloc A's) completes selection: reuses `#post-motions-screen`, `.star-result` hidden, new `renderPostMotionsScreen("phase4stage2")` case with a disabled "Stage 3 (amendments + vote) not yet built." button (replaces the old `"phase4stage1"` case).
+    - Forward-compat: nothing in this pass mutates `delegate.personality`/`.boss`, `bloc.leader`, or a paper's `.bloc` reference — a future stage computes each speaker's rhetorical role from those fields on the fly.
+    - style.css v24: new `.speakers-list li.speakers-subheader` / `.stage2-slot` / `.speakers-num` styles, plus a `white-space: nowrap` fix on the "Speakers List" header label so it doesn't wrap against longer paper names.
+- **v32 (Phase 3 caucus fast-forward toggle)** — Separate from the Phase 4 Stage 1 work: a Phase 3 caucus feature addition. Full spec in §8.5's Fast-Forward Toggle subsection.
     - New icon-only ⏩ button (no text label) in the caucus dais, positioned to the left of the "UNMODERATED CAUCUS" / minutes label, caucus-wide (one `sp.ffActive` state, not per-bloc). Appears the instant the timer enters `pre` phase, toggles on click, disappears entirely once the timer hits 0:00 (`ffActive` explicitly reset to `false` at that transition too).
     - While active: `tickSpeech()` multiplies the currently-active rate (`preRate` or `warnRate`) by `CAUCUS_FF_MULTIPLIER` (3); dialogue turn-display durations run at 1/3 normal length.
     - Auto-revert: FF is forced off the instant displayed seconds crosses into `warn` phase (reusing the existing `<=` threshold check, so a 3×-sped tick can't skip the revert). Re-clickable afterward; re-enabling during `warn` behaves identically to `pre`-phase FF.
