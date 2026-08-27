@@ -1,5 +1,108 @@
 /* ==========================================================
    POINT OF ORDER — Game Logic
+   v31: Two fixes (style.css/index.html unchanged from v22/v13).
+        - Phase 4 Stage 1 motion spoken text no longer ends in a
+          trailing period ("...and straight into voting" /
+          "...and a 30 second amendment period"), matching every
+          other motion type's spoken field (none of them end in
+          punctuation — confirmed against unmod/rr/mod's templates).
+        - Bugfix: a Phase 1 misclick that rules an actually-present
+          (or P&V) delegate "absent" set del.markedAs = "absent" in
+          handleRollAction and nothing ever reverted it. Phase 2/3/4's
+          room renders gray a seat out via
+          `del.markedAs === "absent" || !del.present`, so that stray
+          markedAs value kept the delegate visually (and, since
+          nothing else consulted del.present downstream of that
+          check, functionally) marked absent for the rest of
+          committee even though del.present — their true, never-
+          mutated attendance flag — was still true. New
+          reconcileMarkedAsAfterRollCall(), called from
+          finishRollCall() right before computeAndShowScore(), resets
+          markedAs back to the delegate's real expected ruling
+          (PERSONALITIES[personality].expected) for any delegate
+          where present === true but markedAs === "absent". Truly
+          absent delegates are untouched: the `!del.present` half of
+          that same OR check already grays them out correctly
+          regardless of markedAs, so they're unaffected either way.
+          Scoring is untouched — computeAndShowScore() reads only
+          state.rollResults (logged at click-time in handleRollAction),
+          never del.markedAs, so the misclick still costs a star in
+          the Phase 1 debrief exactly as before; this fix only
+          reconciles the seat's persistent visual state.
+   v30: Phase 4 Stage 1 (motion proposition + vote) built, ending in
+        a temporary dead-end placeholder (style.css v22, index.html
+        v13). Stage 2 (2-for/2-against speeches), amendment mechanics,
+        and the final vote are explicitly NOT part of this pass — see
+        DESIGN.md §8.75. (Revised before ship: Q&A framing replaced
+        with 2-for/2-against, motion count corrected from 4 to 3.)
+        - New motion type "voting": { order: "submitted"|"reverse",
+          seconds: 30|60, amendment: true|false, spoken, written }.
+        - startPhase4(): mirrors startPhase3()'s reuse pattern.
+          Re-initializes state.p2 with votingMode=true (unmodMode
+          explicitly cleared; startPhase3 now explicitly clears
+          votingMode too, so the two flags can never both be true at
+          once), retitles the phase label to "Phase 4 of 5 · Voting
+          Procedure", re-renders the committee room at original seat
+          positions. Opening chair prompt unchanged.
+        - renderPostMotionsScreen: the "phase3" case now reads
+          "Proceed to Voting Procedure →" and calls startPhase4()
+          (previously "Adjourn & Restart" / page reload). New
+          "phase4stage1" case renders a disabled dead-end button
+          ("Stage 2 (Q&A) not yet built.").
+        - handleCallForMotions (votingMode branch): 3 random present
+          delegates raise (personality irrelevant, same as Phase 3's
+          unmod solicitation), each pre-assigned a distinct {order,
+          seconds, amendment} combo via the new
+          buildForcedVotingCombos(), mirroring the
+          _forcedUnmodMinutes pattern. Coverage-guaranteed in just 2
+          of the 3 slots: Slot A is "submitted" with a coinflip
+          amendment value, Slot B is "reverse" with the OPPOSITE
+          amendment value, so both orders and both amendment values
+          are always represented; Slot C is any remaining combo. This
+          matches the standing rule (now applied to all phases, not
+          just Phase 4) that the player always selects exactly 3
+          motions regardless of how many placards raise — Phase 2
+          already worked this way (5 raise, 3 required); Phase 4 was
+          previously (incorrectly) specced at 4 and is now aligned.
+        - generateMotion(): new forced-voting-combo branch (checked
+          before the forced-unmod branch) builds the motion object
+          from the delegate's pre-assigned combo, ignoring
+          personality, same short-circuit pattern as Phase 3.
+        - No dilatory branch and no appearance-time thud fires for
+          "voting"-type motions — falls through the existing
+          type === "unmod" / type === "mod" checks unchanged (a
+          voting motion matches neither), so this needed no new
+          suppression logic.
+        - disruptivenessRank: new "voting" branch returns
+          [orderVal, seconds, amendVal] (reverse=1 always outranks
+          submitted=0 regardless of the rest; within the same order,
+          60 sec outranks 30 sec; amendment only breaks a tie where
+          order AND seconds both already match). compareDisruptiveness
+          extended to compare a 3rd tuple slot when both ranks have
+          one; existing 2-element ranks (unmod/rr/mod) are unaffected.
+        - handleCallFavor: votingMode rigs the pass/fail outcome
+          directly by motion content instead of the normal
+          fail-fail-pass retry pattern — amendment:true always passes
+          on the first attempt, amendment:false always fails no
+          matter how many times it's called. Order-pick grading
+          (whether the player called the most disruptive unresolved
+          motion) is untouched; only the pass/fail roll is rigged.
+        - handlePassProceed: votingMode branch calls the new
+          showVotingStage1Placeholder(motion) instead of
+          enterSpeakerSelection()/startUnmodCaucus(). Genuine dead
+          end: no speaker selection, no Q&A, no debrief scoring.
+          Reuses #post-motions-screen; hides its .star-result block
+          entirely (the first real use of the display:none hook the
+          v23-era comment in finishPhase2 was written to anticipate).
+        - Dev panel: "4 · Voting" button enabled (index.html v13),
+          skips straight to startPhase4() the same way "3 · Unmod"
+          skips to startPhase3().
+        - style.css v22: .chair-prompt-btn gets explicit
+          white-space:normal / word-wrap:break-word so the voting
+          motion's spoken sentence (the longest string in the game)
+          wraps to 2+ lines in the dais readout instead of
+          overflowing. The delegate speech bubble already wrapped
+          with a safe max-width; confirmed, not changed.
    v29: Speaker-selection soft-lock fix (single-round mod +
         proposer chooses "last").
         - Root cause: round1Target/round2Target were separately
@@ -310,6 +413,13 @@ const CAUCUS_BUBBLE_GAP_MS      = 400;   // normal turn: silence before the next
 const CAUCUS_CUTOFF_OVERLAP_MS  = 1900;  // cutoff turn: when the interrupting line appears
 const CAUCUS_HOVER_DEBOUNCE_MS  = 150;   // hover must persist this long before activeIdx changes
 const CAUCUS_HOVER_IN_DELAY_MS  = 200;   // soft delay before a newly-active bloc's first bubble appears
+
+/* ==========================================================
+   PHASE 4 STAGE 1 — VOTING PROCEDURE MOTION TUNING (v30)
+========================================================== */
+const VOTING_ORDERS = ["submitted", "reverse"];
+const VOTING_SECONDS = [30, 60];
+const VOTING_AMENDMENTS = [true, false];
 
 // ---------- DATA POOLS ----------
 const COMMITTEES = [
@@ -956,9 +1066,28 @@ async function handleRollAction(action) {
     nextRollCall();
 }
 
+// v31 — a Phase 1 misclick that marks an actually-present (or P&V) delegate
+// "absent" sets del.markedAs = "absent" (handleRollAction), which is what
+// Phase 2/3/4's room renders check (`del.markedAs === "absent" || !del.present`)
+// to decide the grayed-out seat state. Left alone, that "absent" markedAs
+// value outlives the roll call and grays the delegate out for the rest of
+// committee even though del.present (their true, never-mutated attendance
+// flag) is still true. Reconcile it back to their real status here so the
+// stray visual doesn't survive into later phases. Truly absent delegates
+// (del.present === false) are untouched — the `!del.present` half of that
+// same OR check already grays them out correctly regardless of markedAs.
+function reconcileMarkedAsAfterRollCall() {
+    state.delegates.forEach(d => {
+        if (d.present && d.markedAs === "absent") {
+            d.markedAs = PERSONALITIES[d.personality].expected;
+        }
+    });
+}
+
 function finishRollCall() {
     document.getElementById("roll-progress-fill").style.width = "100%";
     document.getElementById("calling-country").textContent = "—";
+    reconcileMarkedAsAfterRollCall();
     computeAndShowScore();
     setTimeout(() => showScreen("transition-screen"), 800);
 }
@@ -1035,12 +1164,77 @@ function initPhase2State() {
         speeches: null,
         repeatPickCount: 0,
         unmodMode: false,
+        votingMode: false,
         priorTopic: null,
         caucus: null,
     };
 }
 
+// ==========================================================
+//  PHASE 4 STAGE 1 — VOTING PROCEDURE MOTION COMBOS (v30)
+// ==========================================================
+function allVotingCombos() {
+    const combos = [];
+    VOTING_ORDERS.forEach(order => {
+        VOTING_SECONDS.forEach(seconds => {
+            VOTING_AMENDMENTS.forEach(amendment => {
+                combos.push({ order, seconds, amendment });
+            });
+        });
+    });
+    return combos; // 8 total: 2 orders x 2 seconds x 2 amendment
+}
+function comboEquals(a, b) {
+    return a.order === b.order && a.seconds === b.seconds && a.amendment === b.amendment;
+}
+
+// v30 — coverage-guaranteed combo pick for Phase 4's 3 raised delegates.
+// With only 3 slots, Slot A and Slot B alone guarantee full coverage of
+// both axes that matter for grading: A is "submitted" with a coinflip
+// amendment value, B is "reverse" with the OPPOSITE amendment value (so
+// both orders and both amendment values are always represented in just
+// two slots). Slot C is any remaining combo (excluding exact duplicates
+// of A/B) and carries no coverage obligation of its own. Final 3 are
+// shuffled so the coverage guarantee doesn't correlate with proposal/
+// click order.
+function buildForcedVotingCombos() {
+    const all = allVotingCombos();
+    const A = { order: "submitted", seconds: pick(VOTING_SECONDS), amendment: pick(VOTING_AMENDMENTS) };
+    const B = { order: "reverse", seconds: pick(VOTING_SECONDS), amendment: !A.amendment };
+    const remaining = all.filter(c => !comboEquals(c, A) && !comboEquals(c, B));
+    const C = pick(remaining);
+    return shuffle([A, B, C]);
+}
+
+function buildVotingMotion(delegate, combo) {
+    const { order, seconds, amendment } = combo;
+    const spoken =
+        "Motion to enter voting procedure in " +
+        (order === "reverse" ? "reverse order submitted" : "order submitted") +
+        " with a 2 for/2 against with " + seconds + " seconds speaking time " +
+        (amendment ? "and a 30 second amendment period" : "and straight into voting");
+    const written =
+        shortName(delegate.country) + " voting" +
+        (order === "reverse" ? " rev" : "") +
+        " 2/2 " + seconds + " sec" +
+        (amendment ? " 30 sec amend" : "");
+    return {
+        type: "voting",
+        order, seconds, amendment,
+        spoken, written,
+        topic: null,
+    };
+}
+
 function disruptivenessRank(motion) {
+    if (motion.type === "voting") {
+        // v30 — reverse order always outranks order submitted regardless of
+        // the rest; within the same order, 60 sec outranks 30 sec;
+        // amendment only breaks a tie where order AND seconds both match.
+        const orderVal = motion.order === "reverse" ? 1 : 0;
+        const amendVal = motion.amendment ? 1 : 0;
+        return [orderVal, motion.seconds, amendVal];
+    }
     if (motion.type === "unmod") {
         // v22 — longer unmods rank more disruptive.
         const m = motion.min || 0;
@@ -1058,6 +1252,10 @@ function compareDisruptiveness(a, b) {
     const rb = disruptivenessRank(b);
     if (ra[0] !== rb[0]) return ra[0] - rb[0];
     if (ra[1] !== rb[1]) return ra[1] - rb[1];
+    // v30 — voting-type ranks carry a 3rd tuple slot (amendment tiebreak);
+    // 2-element ranks (unmod/rr/mod) never reach this since both sides
+    // would be undefined and the comparison is skipped.
+    if (ra[2] !== undefined && rb[2] !== undefined && ra[2] !== rb[2]) return ra[2] - rb[2];
     return b.proposalOrder - a.proposalOrder;
 }
 function mostDisruptiveUnresolvedIdx() {
@@ -1136,6 +1334,8 @@ function renderMotionsDais() {
             break;
         }
         case "requesting": {
+            // v30 — standing rule across all phases: the player selects
+            // exactly 3 motions regardless of how many placards raise.
             const status = daisStatus(
                 `<strong>${p2.motionsCollected.length} / 3</strong> motions noted. ` +
                 `Recognize a raised placard to hear their motion.`
@@ -1408,7 +1608,16 @@ function handleCallForMotions() {
         .filter(i => i !== -1);
 
     let chosen;
-    if (p2.unmodMode) {
+    if (p2.votingMode) {
+        // v30 — Phase 4 Stage 1: pick 3 random present delegates (any
+        // personality) and pre-assign each a distinct, coverage-guaranteed
+        // {order, seconds, amendment} combo.
+        chosen = shuffle(presentIdxs).slice(0, 3);
+        const combos = buildForcedVotingCombos();
+        chosen.forEach((idx, i) => {
+            state.delegates[idx]._forcedVotingCombo = combos[i];
+        });
+    } else if (p2.unmodMode) {
         // v22 — Phase 3: pick 3 random present delegates (any personality)
         // and pre-assign each one a forced unmod duration.
         chosen = shuffle(presentIdxs).slice(0, 3);
@@ -1466,12 +1675,16 @@ function onDelegateClickForMotion(e) {
     updateMotionsInstructions(
         motion.type === "unmod"
             ? `${del.country} has motioned for an <em>unmoderated caucus</em>. Note it and continue.`
-            : `${del.country} has motioned. Note it and continue.`
+            : motion.type === "voting"
+                ? `${del.country} has motioned to enter <em>voting procedure</em>. Note it and continue.`
+                : `${del.country} has motioned. Note it and continue.`
     );
     renderMotionsDais();
 
     // v22 — appearance-time thud for correction buttons, but not in unmodMode
-    // (no such buttons appear during Phase 3).
+    // (no such buttons appear during Phase 3). v30 — "voting"-type motions
+    // never match the unmod/needsCorrection checks below either way, so
+    // Phase 4 needed no extra suppression here.
     if (!p2.unmodMode) {
         if (motion.type === "unmod" || (motion.type === "mod" && motion.needsCorrection)) {
             playThud();
@@ -1525,12 +1738,18 @@ function handleAcceptMotion() {
         topic: motion.topic,
         min: motion.min,
         sec: motion.sec,
+        order: motion.order,
+        seconds: motion.seconds,
+        amendment: motion.amendment,
         status: null,
         proposalOrder: p2.motionsCollected.length,
     });
     p2.currentSpeaker = null;
     renderAgenda();
 
+    // v30 — standing rule across all phases: the player selects exactly 3
+    // motions regardless of how many placards raise (Phase 2 has always
+    // worked this way; Phase 3 and Phase 4 Stage 1 match it).
     if (p2.motionsCollected.length >= 3) {
         p2.raisedDelegates.forEach(idx => {
             const seat = getSeatElement(idx, "committee-room-p2");
@@ -1574,16 +1793,25 @@ function handleCallFavor() {
     const presentDels = state.delegates.filter(d => d.present);
     const totalPresent = presentDels.length;
     const needed = Math.floor(totalPresent / 2) + 1;
+    const motion = p2.motionsCollected[p2.currentMotionIdx];
 
     let willPass;
-    if (p2.voteAttempt >= 2) willPass = true;
-    else willPass = Math.random() < 0.4;
+    if (p2.votingMode) {
+        // v30 — Stage 1 voting is rigged directly by motion content, not
+        // the normal fail-fail-pass retry pattern: amendment-bearing
+        // motions always pass first try, others always fail no matter how
+        // many times they're called. Order-pick grading is unaffected.
+        willPass = motion.amendment === true;
+    } else if (p2.voteAttempt >= 2) {
+        willPass = true;
+    } else {
+        willPass = Math.random() < 0.4;
+    }
 
     let favorCount;
     if (willPass) favorCount = needed + Math.floor(Math.random() * (totalPresent - needed + 1));
     else favorCount = Math.floor(Math.random() * needed);
 
-    const motion = p2.motionsCollected[p2.currentMotionIdx];
     const proposerIdx = motion.delegateIdx;
 
     const otherIdxs = shuffle(presentDels
@@ -1660,6 +1888,11 @@ function handlePassProceed() {
         // v23 — route into the actual unmod caucus (not the v22 stub).
         const motion = p2.motionsCollected[p2.currentMotionIdx];
         startUnmodCaucus(motion);
+    } else if (p2.votingMode) {
+        // v30 — Stage 1 dead end. Only reachable via an amendment-bearing
+        // motion, since non-amendment motions never pass.
+        const motion = p2.motionsCollected[p2.currentMotionIdx];
+        showVotingStage1Placeholder(motion);
     } else {
         enterSpeakerSelection();
     }
@@ -1721,6 +1954,12 @@ function finishPhase2() {
 
 // ---- Motion generation ----
 function generateMotion(delegate) {
+    // v30 — forced voting combo takes precedence (Phase 4 Stage 1).
+    if (delegate._forcedVotingCombo != null) {
+        const combo = delegate._forcedVotingCombo;
+        delegate._forcedVotingCombo = null;
+        return buildVotingMotion(delegate, combo);
+    }
     // v22 — forced unmod takes precedence (Phase 3).
     if (delegate._forcedUnmodMinutes != null) {
         const mins = delegate._forcedUnmodMinutes;
@@ -2631,6 +2870,7 @@ function startPhase3() {
     showScreen("motions-screen");
     initPhase2State();
     state.p2.unmodMode = true;
+    state.p2.votingMode = false; // v30 — the two flags never overlap.
     state.p2.priorTopic = priorTopic;
 
     const label = document.getElementById("motions-phase-label");
@@ -2646,6 +2886,7 @@ function startPhase3() {
         d.guaranteedBadMod = false;
         d._pendingMotion = null;
         d._forcedUnmodMinutes = null;
+        d._forcedVotingCombo = null;
     });
 
     renderCommitteeRoom("committee-room-p2");
@@ -2658,6 +2899,63 @@ function startPhase3() {
     renderAgenda();
     renderMotionsDais();
     updateMotionsInstructions("Ask the floor for motions.");
+}
+
+// ==========================================================
+//  PHASE 4 STAGE 1 — MOTIONS & VOTE (v30)
+// ==========================================================
+function startPhase4() {
+    showScreen("motions-screen");
+    initPhase2State();
+    state.p2.votingMode = true;
+    state.p2.unmodMode = false; // v30 — the two flags never overlap.
+
+    const label = document.getElementById("motions-phase-label");
+    if (label) label.textContent = "Phase 4 of 5 · Voting Procedure";
+
+    const body = document.querySelector(".phase2-body");
+    if (body) body.classList.remove("caucus-mode");
+    const agenda = document.querySelector(".agenda-panel");
+    if (agenda) agenda.classList.remove("hidden-in-caucus");
+
+    // Clear leftover per-delegate flags from earlier phases.
+    state.delegates.forEach(d => {
+        d.guaranteedBadMod = false;
+        d._pendingMotion = null;
+        d._forcedUnmodMinutes = null;
+        d._forcedVotingCombo = null;
+    });
+
+    renderCommitteeRoom("committee-room-p2");
+    state.delegates.forEach((del, idx) => {
+        const seat = getSeatElement(idx, "committee-room-p2");
+        if (!seat) return;
+        if (del.markedAs === "absent" || !del.present) seat.classList.add("marked-absent");
+    });
+
+    renderAgenda();
+    renderMotionsDais();
+    updateMotionsInstructions("Ask the floor for motions.");
+}
+
+// v30 — Stage 1 dead end: only reachable once a player votes through to
+// an amendment-bearing motion. No speaker selection, no Q&A, no debrief
+// scoring; see DESIGN.md §8.75 and §11 non-goals for this pass.
+function showVotingStage1Placeholder(motion) {
+    const titleEl = document.querySelector("#post-motions-screen .phase-title");
+    if (titleEl) titleEl.textContent = "Voting Procedure Established";
+    const flavorEl = document.getElementById("post-motions-flavor");
+    if (flavorEl) {
+        flavorEl.innerHTML =
+            `The committee adopts <strong>${motion.delegate.country}'s motion</strong>: ` +
+            `<em>${motion.spoken}</em>`;
+    }
+    // No debrief scoring exists yet for this partial phase.
+    const starResult = document.querySelector("#post-motions-screen .star-result");
+    if (starResult) starResult.style.display = "none";
+
+    renderPostMotionsScreen("phase4stage1");
+    showScreen("post-motions-screen");
 }
 
 // ==========================================================
@@ -3163,8 +3461,17 @@ function renderPostMotionsScreen(phase) {
     if (phase === "phase2") {
         fresh.textContent = "Proceed to Unmods →";
         fresh.addEventListener("click", startPhase3);
+    } else if (phase === "phase3") {
+        // v30 — was "Adjourn & Restart" / page reload; now hands off to
+        // Phase 4 Stage 1 instead.
+        fresh.textContent = "Proceed to Voting Procedure →";
+        fresh.addEventListener("click", startPhase4);
+    } else if (phase === "phase4stage1") {
+        // v30 — genuine dead end for this pass. Disabled, no handler.
+        fresh.textContent = "Stage 2 (Q&A) not yet built.";
+        fresh.disabled = true;
     } else {
-        // phase3 → adjourn & restart
+        // Fallback for any future terminal phase.
         fresh.textContent = "Adjourn & Restart";
         fresh.addEventListener("click", () => location.reload());
     }
@@ -3291,6 +3598,14 @@ function devSkipTo(phase) {
         // via a transient state.p2 shell.
         state.p2 = { speakersMotion: { topic: pick(TOPICS) } };
         startPhase3();
+        return;
+    }
+    if (phase === 4) {
+        // v30 — startPhase4() doesn't depend on any prior Phase 2/3 state
+        // (fresh initPhase2State() every time), so dev-skip can jump
+        // straight there once Phase 1 is auto-completed.
+        devAutoCompletePhase1();
+        startPhase4();
         return;
     }
 }

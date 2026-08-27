@@ -6,9 +6,9 @@
 
 ## 0. Current Versions (Source of Truth)
 
-- `game.js` — **v29**
-- `style.css` — **v21**
-- `index.html` — **v12**
+- `game.js` — **v31**
+- `style.css` — **v22**
+- `index.html` — **v13**
 
 When starting a fresh chat: read this doc first, then confirm the version headers in each file match the numbers above. If they don't, flag the mismatch before making changes.
 
@@ -105,7 +105,7 @@ Phase 3 unmod motions never trigger the dilatory or mod-correction thuds (those 
 | 1 | Roll Call | ~1–2 min | Alphabetical calling, present/P&V/absent distinction, the "here" correction | ✅ Built |
 | 2 | Points & Motions → Vote → Speaker Selection → Speeches | ~5–8 min | Motion formats, dilatory rulings, disruptiveness ordering, voting, speaker-list construction, repeat-speaker discipline, speech timing and gavel discipline | ✅ Built |
 | 3 | Unmoderated Caucus (Motion Collection → Vote → Caucus) | ~3–4 min | Same motion/vote loop for unmods only; caucus-time management; **bloc leadership assessment**; warning + gavel timing on a compressed clock | ✅ Built (v23) |
-| 4 | Voting Procedure | TBD | Draft resolution flow, Q&A vs. 2-for/2-against, amendment period, final vote | ⬜ Not started |
+| 4 | Voting Procedure (Stage 1: Motion → Vote only) | TBD | Same motion/vote loop for voting-procedure motions (order, 2-for/2-against speaking time, amendment period); disruptiveness ranking with a 3-part tiebreak | 🚧 Stage 1 built (v30); Stage 2 (2-for/2-against speeches), amendments, and the final vote not started |
 | — | Debrief | ~30 sec | Star summary across all phases | 🚧 Per-phase debriefs built; global debrief planned |
 
 **Explicitly deferred:** a standalone *Crisis Break* phase.
@@ -296,13 +296,125 @@ Renders into `#phase2-stars` / `#phase2-summary` (reused). Post-motions title be
 
 ---
 
+## 8.75. Phase 4 Stage 1: Voting Procedure (Motion → Vote only), Full Spec (v30)
+
+**This is a partial phase.** Only motion proposition through a passing vote is built. Stage 2 (the 2-for/2-against speech loop), amendment-period mechanics, and the final vote are explicitly not implemented; reaching a passing vote lands on a temporary dead-end placeholder screen. See "Non-Goals for This Pass" below.
+
+Phase 4 reuses the Phase 2/3 `#motions-screen` DOM throughout, gated by `state.p2.votingMode = true`. `unmodMode` and `votingMode` are mutually exclusive; `startPhase3()` and `startPhase4()` each explicitly clear the other flag so the two substates can never overlap.
+
+### Entry
+
+After the Phase 3 unmod caucus concludes, the post-motions screen's button reads **"Proceed to Voting Procedure →"** and calls `startPhase4()` (previously this button read "Adjourn & Restart" and reloaded the page; that behavior moved to the Stage 1 dead end instead). `renderPostMotionsScreen(phase)` is the single place button text/handler are set; no static listener on `#restart-btn`.
+
+`startPhase4()` mirrors `startPhase3()`'s reuse pattern exactly: re-initializes `state.p2` with `votingMode: true` (`unmodMode` explicitly set `false`), clears leftover per-delegate flags from earlier phases (`guaranteedBadMod`, `_pendingMotion`, `_forcedUnmodMinutes`, `_forcedVotingCombo`), retitles the phase label to *"Phase 4 of 5 · Voting Procedure"*, and re-renders the committee room at the original seat positions. The opening chair prompt is the same as Phases 2 and 3: *"Are there any points or motions on the floor?"*
+
+### Motion Data Model
+
+```js
+{
+  type: "voting",
+  order: "submitted" | "reverse",
+  seconds: 30 | 60,
+  amendment: true | false,
+  spoken: "...",
+  written: "...",
+}
+```
+
+### Motion Count: 3 (standing rule across all phases)
+
+Phase 4 solicits and requires exactly **3** motions, matching Phase 2 and Phase 3's existing pattern (Phase 2 raises 5 placards but only requires 3 accepted before `ready_to_vote`; Phase 3 raises and requires 3). The standing rule going forward across all phases: the player only ever selects 3 motions to place on the agenda, regardless of how many placards are raised. (Phase 4 was originally specced at 4 raised/4 required; corrected to 3 before this stage shipped.)
+
+### Motion Solicitation & Capture
+
+Three random present delegates raise placards (personality irrelevant, same as Phase 3's unmod solicitation). Each is pre-assigned a distinct `{order, seconds, amendment}` combo via `buildForcedVotingCombos()`, generated **before** any placard raises:
+
+1. The full 8-combo space is `2 orders × 2 seconds × 2 amendment` values.
+2. Slot A: `order: "submitted"`, `amendment` a random coinflip, `seconds` random.
+3. Slot B: `order: "reverse"`, `amendment` the **opposite** of Slot A's value, `seconds` random. A and B alone guarantee both orders and both amendment values are represented, since only 3 slots are available (a single motion can satisfy two axes at once, e.g. "order submitted" + "amendment true" together).
+4. Slot C: any remaining combo from the other 6, excluding exact duplicates of A or B. Carries no coverage obligation of its own.
+5. The final 3 combos are shuffled before assignment, so coverage never correlates with click order.
+
+`generateMotion()` checks `delegate._forcedVotingCombo` before the `_forcedUnmodMinutes` check and short-circuits to `buildVotingMotion()`, ignoring personality — mirrors the Phase 3 pattern exactly.
+
+No dilatory prompt appears (motion `type` is `"voting"`, which matches neither the `type === "unmod"` nor `type === "mod" && needsCorrection` branches in `renderMotionsDais`'s "speaking" stage, so this needed no new suppression logic). All three go straight to *"Note motion & recognize next delegate →"*. No appearance-time thuds fire on these motion clicks, for the same reason.
+
+### Spoken / Written Templates
+
+```js
+spoken = "Motion to enter voting procedure in " +
+  (order === "reverse" ? "reverse order submitted" : "order submitted") +
+  " with a 2 for/2 against with " + seconds + " seconds speaking time " +
+  (amendment ? "and a 30 second amendment period" : "and straight into voting");
+
+written = shortName(country) + " voting" +
+  (order === "reverse" ? " rev" : "") +
+  " 2/2 " + seconds + " sec" +
+  (amendment ? " 30 sec amend" : "");
+```
+
+Four possible `written` outputs (all single-spaced, no doubles):
+
+| order | amendment | `written` |
+|---|---|---|
+| submitted | false | `[Delegate] voting 2/2 30 sec` |
+| submitted | true | `[Delegate] voting 2/2 30 sec 30 sec amend` |
+| reverse | false | `[Delegate] voting rev 2/2 60 sec` |
+| reverse | true | `[Delegate] voting rev 2/2 60 sec 30 sec amend` |
+
+The spoken sentence is the longest string in the game. It appears verbatim in the proposing delegate's speech bubble and in the `calling_favor`/`calling_oppose` chair-prompt dais buttons ("All those in favor of X's motion for [sentence] please raise..."). Both surfaces wrap (no truncation, no font-size step-down): `.chair-prompt-btn` gained explicit `white-space: normal; word-wrap: break-word;` in style.css v22; `.speech-bubble` already had equivalent wrap rules plus a 240px max-width from earlier versions.
+
+### Disruptiveness Ranking
+
+```js
+function disruptivenessRank(motion) {
+  const orderVal = motion.order === "reverse" ? 1 : 0;
+  const amendVal = motion.amendment ? 1 : 0;
+  return [orderVal, motion.seconds, amendVal];
+}
+```
+
+Compared lexicographically, descending, same mechanism as Phase 3's `[3, minutes]` tuples. Reverse order always outranks order submitted regardless of the other two fields. Within the same order, `seconds: 60` always outranks `seconds: 30`. `amendment` only acts as a tiebreak when order AND seconds both already match. `compareDisruptiveness()` was extended to compare an optional 3rd tuple slot when both ranks have one; 2-element ranks (unmod/rr/mod) are unaffected since the extra comparison is skipped when either side's 3rd slot is `undefined`.
+
+### Voting Outcome (rigged)
+
+Unlike Phase 2/3's fail-fail-pass retry pattern (`voteAttempt >= 2` forces a pass), Stage 1 voting is rigged directly by motion content:
+
+- `amendment === true` → the vote always passes, on the first attempt.
+- `amendment === false` → the vote always fails, no matter how many times it's called.
+
+This is independent of disruptiveness-order grading — the player is still scored on whether they called the vote on the most disruptive unresolved motion each time (`orderPicks`, unchanged mechanism). The rig only controls the pass/fail roll itself, and guarantees the stage resolves once the player reaches an amendment-bearing motion (which is not necessarily the last one voted on — whichever amendment motion is called first ends the stage).
+
+### Stage 1 Exit (temporary placeholder, dead end)
+
+When an amendment-bearing motion passes and the player clicks **Proceed →**, `handlePassProceed()`'s `votingMode` branch calls `showVotingStage1Placeholder(motion)` instead of `enterSpeakerSelection()`/`startUnmodCaucus()`. This is a genuine dead end for this pass:
+
+- Title: *"Voting Procedure Established"*.
+- Flavor line: `The committee adopts **{country}'s motion**: {spoken}` (reuses `post-motions-flavor`).
+- The `.star-result` block is hidden entirely (`display: none`) — no debrief scoring exists yet for this partial phase. (This is the first real use of the `display:none` hook a v23-era comment in `finishPhase2` had anticipated but never triggered.)
+- `renderPostMotionsScreen("phase4stage1")` sets `#restart-btn` to a disabled button reading *"Stage 2 (Q&A) not yet built."* — no click handler, no further state transition.
+
+### Dev Mode
+
+Dev-panel "4 · Voting" is enabled (index.html v13). `devSkipTo(4)` auto-completes Phase 1 and calls `startPhase4()` directly — no faked prior-phase state is needed since `startPhase4()` always does a fresh `initPhase2State()`, unlike Phase 3's dev-skip which fakes a `speakersMotion.topic` for the caucus dialogue bucket.
+
+### Non-Goals for This Pass
+
+- No Stage 2 speech loop (the 2-for/2-against podium sequence, speaking-time enforcement).
+- No amendment-period mechanics (the 30-sec amendment flag is stored and displayed but does nothing yet).
+- No speaker order construction.
+- No final vote.
+- No debrief/star scoring for Phase 4 yet.
+
+---
+
 ## 9. Dev Mode
 
 Panel is a yellow sticky note fixed top-right on the briefing screen when `DEV_MODE = true`. Phase-skip buttons:
 - 1 · Roll Call (starts fresh Phase 1)
 - 2 · Moderated Caucus (auto-marks Phase 1 correctly, jumps to Phase 2)
 - 3 · Unmod (auto-marks Phase 1, fakes a Phase 2 topic, jumps directly to Phase 3 motion collection)
-- 4 · Voting (disabled)
+- 4 · Voting (v30: auto-marks Phase 1, jumps directly to Phase 4 Stage 1 motion collection; `startPhase4()` has no dependency on prior Phase 2/3 state, so no faking is needed)
 - 5 · Debrief (disabled)
 
 ---
@@ -333,9 +445,10 @@ point-of-order/
 Single `state` object in `game.js`:
 - `committee`, `delegates[]`, `rollOrder[]`, roll-call tracking
 - `usedSpeechLines: Set`, global no-reuse tracker for Phase 2 speeches
-- `p2`, Phase 2 & 3 substate:
+- `p2`, Phase 2, 3 & 4 substate:
   - Phase 2 fields: motions, selection, speech loop state, `repeatPickCount`
   - Phase 3 fields (v23): `unmodMode`, `priorTopic`, `caucus: { blocs[2], motion, topicBucket, hoveredIdx, lockedIdx, activeIdx }`
+  - Phase 4 Stage 1 field (v30): `votingMode` (mutually exclusive with `unmodMode`; each of `startPhase3()`/`startPhase4()` explicitly clears the other)
   - `speeches`, shared speech-loop object; `caucusMode` flag flips it into caucus behavior
 
 ### Timer Engine
@@ -351,9 +464,10 @@ See §4. `DELEGATE_ART`, `GAVEL_ART`, `GAVEL_SOUND` are the sole points of chang
 `renderStarBlock(containerId, stars, summaryHTML)` injects three SVG stars and sets neighbor `#*-summary` innerHTML (v21). Callers use `buildMultilineSummary(clauses, fallback)`. Phase 3 reuses `#phase2-stars` / `#phase2-summary` on the shared `#post-motions-screen`.
 
 ### Post-Motions Button
-`renderPostMotionsScreen(phase)` (v23) rewires `#restart-btn` at runtime:
+`renderPostMotionsScreen(phase)` (v23, extended v30) rewires `#restart-btn` at runtime:
 - `phase === "phase2"`: text "Proceed to Unmods →", handler `startPhase3()`.
-- `phase === "phase3"`: text "Adjourn & Restart", handler reloads the page.
+- `phase === "phase3"`: text "Proceed to Voting Procedure →", handler `startPhase4()`.
+- `phase === "phase4stage1"`: text "Stage 2 (Q&A) not yet built.", `disabled = true`, no handler. Dead end for this pass.
 
 Uses `cloneNode` swap to purge any prior click handlers. No static listener on the button.
 
@@ -377,7 +491,20 @@ None.
 
 ## 13. Change Log (Major Milestones)
 
-- **v29 (speaker-selection soft-lock fix, current)** — Fixed a reported bug: a demboy/slacker proposer choosing "last" on a single-round mod could leave the player prompted for one fewer speaker than needed, permanently stranding a null `speakerOrder` slot and soft-locking the speech loop. Root cause: `round1Target`/`round2Target` were counters manually decremented in parallel with `speakerOrder`, so the two could desync. Fix: they're now fixed round sizes set once and never mutated again; "how many more are needed" is always derived fresh from counting actual filled slots in `speakerOrder` (new `round1FilledCount()`/`round2FilledCount()`), so it can't drift out of sync regardless of how or how many times a slot gets filled.
+- **v31 (Phase 1 gray-out persistence bugfix + Phase 4 punctuation, current)**
+    - **Bugfix:** a Phase 1 misclick ruling an actually-present (or P&V) delegate "absent" left `del.markedAs = "absent"` permanently set. Phase 2/3/4 room renders gray a seat out via `del.markedAs === "absent" || !del.present`, so the misclick kept that delegate visually marked absent for the rest of committee even though `del.present` (their real attendance flag, set once at committee generation and never mutated by roll call) was still `true`. New `reconcileMarkedAsAfterRollCall()`, called from `finishRollCall()`, resets `markedAs` back to the delegate's real expected ruling for any present delegate whose `markedAs` still says "absent." Truly absent delegates are unaffected either way (the `!del.present` half of that same check already grays them out correctly). Scoring is untouched: `computeAndShowScore()` reads only `state.rollResults`, never `markedAs`, so the misclick still costs a star in the Phase 1 debrief.
+    - Phase 4 Stage 1's motion `spoken` text no longer ends in a trailing period, matching every other motion type (none of unmod/rr/mod's `spoken` templates end in punctuation).
+    - style.css and index.html unchanged from v22/v13.
+- **v30 (Phase 4 Stage 1: motion proposition + vote only)** — Partial phase; Stage 2 (the 2-for/2-against speech loop), amendment mechanics, and the final vote are explicitly not part of this pass. Full spec, including the non-goals list, in §8.75. Revised before ship: Q&A framing replaced with 2-for/2-against, motion count corrected from 4 to 3 (matching the standing 3-motion rule already used by Phase 2 and Phase 3).
+    - New motion type `"voting"`: `{ order, seconds, amendment, spoken, written }`.
+    - `startPhase4()` mirrors `startPhase3()`'s reuse pattern; `unmodMode`/`votingMode` are mutually exclusive, each explicitly cleared by the other's entry function.
+    - `buildForcedVotingCombos()`: coverage-guaranteed distinct-combo assignment for the 3 raised delegates. Slot A (submitted) and Slot B (reverse, opposite amendment value from A) alone guarantee both orders and both amendment values are represented; Slot C is unconstrained.
+    - `disruptivenessRank`/`compareDisruptiveness` extended for a 3-part `[order, seconds, amendment]` tiebreak; 2-element ranks (unmod/rr/mod) unaffected.
+    - Voting outcome is rigged directly by motion content (`amendment: true` always passes first try, `amendment: false` always fails), not the usual fail-fail-pass retry pattern. Order-pick grading is unaffected.
+    - Stage 1 exit is a genuine dead end: `showVotingStage1Placeholder()` reuses `#post-motions-screen`, hides `.star-result` entirely (no scoring yet), and sets `#restart-btn` to a disabled "Stage 2 (Q&A) not yet built." button (literal button copy retained from the original Stage 1 spec even though the mechanic is now framed as 2-for/2-against, not Q&A).
+    - style.css v22: `.chair-prompt-btn` gained explicit wrap rules so the voting motion's spoken sentence (longest string in the game) grows the dais bar to 2+ lines instead of overflowing.
+    - index.html v13: dev-panel "4 · Voting" button enabled.
+- **v29 (speaker-selection soft-lock fix)** — Fixed a reported bug: a demboy/slacker proposer choosing "last" on a single-round mod could leave the player prompted for one fewer speaker than needed, permanently stranding a null `speakerOrder` slot and soft-locking the speech loop. Root cause: `round1Target`/`round2Target` were counters manually decremented in parallel with `speakerOrder`, so the two could desync. Fix: they're now fixed round sizes set once and never mutated again; "how many more are needed" is always derived fresh from counting actual filled slots in `speakerOrder` (new `round1FilledCount()`/`round2FilledCount()`), so it can't drift out of sync regardless of how or how many times a slot gets filled.
 - **v28 (motions-close button restyled; dropped on-time 10-sec speech flash)**
     - The `ready_to_vote` stage's button (shared by Phase 2 and Phase 3's motions screen, and expected to carry into Phases 4-5) changed from blue "Move to vote on the motions →" to gold/italic "That is all the motions we will be accepting at this time." — dropping the `proceed` class puts it under the existing chair-dialogue button styling used elsewhere (e.g. the dilatory ruling prompt, the favor/oppose vote calls). Handler and voting flow unchanged.
     - `onGavelClick`'s on-time warn-phase flash ("The chair recognizes 10 seconds remaining.") no longer fires for speeches. The late-warning flash and the caucus's "one minute remaining" flash are unchanged.

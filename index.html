@@ -2,7 +2,12 @@
 <!--
     ============================================================
     POINT OF ORDER — A UNCMUNC Chair Simulator
-    index.html — v12
+    index.html — v13
+    v13: Phase 4 Stage 1 (game.js v30) — enabled the dev-panel
+         "4 · Voting" button (was disabled/"Not built yet").
+         No other markup changes; #post-motions-screen and
+         #motions-screen are reused as-is (button label/title/
+         handler are still all set dynamically by game.js).
     v12: Phase 3 (Unmoderated Caucus) wiring.
          - Added id="motions-phase-label" to the phase-label
            div in #motions-screen so JS can retitle it
@@ -70,7 +75,7 @@
                     <button class="dev-btn" data-dev-phase="1">1 · Roll Call</button>
                     <button class="dev-btn" data-dev-phase="2">2 · Moderated Caucus</button>
                     <button class="dev-btn" data-dev-phase="3">3 · Unmod</button>
-                    <button class="dev-btn" data-dev-phase="4" disabled title="Not built yet">4 · Voting</button>
+                    <button class="dev-btn" data-dev-phase="4">4 · Voting</button>
                     <button class="dev-btn" data-dev-phase="5" disabled title="Not built yet">5 · Debrief</button>
                 </div>
             </aside>

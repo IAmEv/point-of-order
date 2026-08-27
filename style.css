@@ -1,6 +1,21 @@
 /* ========================================================
    POINT OF ORDER — A UNCMUNC Chair Simulator
-   style.css — v21
+   style.css — v22
+   v22: Phase 4 Stage 1 wrap fix (game.js v30).
+        - .chair-prompt-btn now sets white-space:normal and
+          word-wrap:break-word explicitly. The voting-procedure
+          motion's spoken sentence (the longest string in the
+          game) is read aloud verbatim in the calling_favor /
+          calling_oppose dais prompts; without this it could
+          render on a single line and overflow instead of
+          growing the (already min-height, not fixed-height)
+          .motions-dais-bar to 2+ lines. No font-size step-down,
+          no truncation.
+        - .speech-bubble (used for the same sentence when a
+          delegate first proposes the motion) already had
+          white-space:normal / word-wrap:break-word / a 240px
+          max-width from earlier versions; confirmed sufficient,
+          left unchanged.
    v21: Glow/bubble fix (game.js v27).
         - .leader-guess and .caucus-clickable:hover glows now
           target .seat-figure (a new wrapper around figure +
@@ -895,6 +910,8 @@ html, body {
     text-align: center;
     line-height: 1.3;
     max-width: 720px;
+    white-space: normal;
+    word-wrap: break-word;
 }
 .chair-prompt-btn:hover {
     transform: translateY(-1px);
