@@ -1,5 +1,388 @@
 /* ==========================================================
    POINT OF ORDER — Game Logic
+   v43: Phase 5, "Timed Crisis," is now reachable in regular play (style.css
+        unchanged from v27, index.html unchanged from v15). Phase 4's
+        debrief button ("phase4" case in renderPostMotionsScreen()) used
+        to read "Adjourn & Restart" and end the game; it now reads
+        "Proceed to Timed Crisis →" and calls startPhase5Stage1()
+        directly, the same way "phase2"/"phase3"'s own debrief buttons
+        already hand off into the next phase. Phase 5's own machinery
+        (state.phase2WinningType, state.phase3Blocs, the priorCaucus
+        bucket exclusion) already supported being entered after a real
+        Phase 2→3→4 run — only the post-Phase-4 button was ever wired to
+        end the game instead. The dev panel's "5 · Timed Crisis" entry is
+        unchanged and still skips straight there for testing.
+   v42: Phase 5 gains a Best Delegate stage, inserted right after Stage
+        3 (voting procedure) resolves and right before the combined
+        debrief (style.css unchanged from v27, index.html unchanged
+        from v15). See DESIGN.md's Phase 5 section for the full spec.
+        - Bugfix folded in: Phase 5's Stage 2 (unmod caucus) used to
+          call assignBlocs() fresh, exactly like a real Phase 3 —
+          re-rolling the bloc split AND the leader coin-flip every
+          time, so Phase 5's bloc leadership could silently differ
+          from the real Phase 3 earlier in the same session. New
+          top-level state.phase3Blocs is now set once by the real
+          Phase 3's own startUnmodCaucus() call; Phase 5's Stage 2
+          reuses those exact bloc objects (same delegates, same
+          leader) instead, so "the CarolinaMUN-style delegate who led
+          a bloc" means the same individual delegate everywhere in the
+          session. Falls back to a fresh assignBlocs() call (and
+          stashes THAT as the reference) only if Phase 3 never
+          actually ran — the dev-skip-to-5 case. The reused bloc
+          objects' per-instance scratch fields (script/turnIdx/
+          currentBubble/etc., already reset every startUnmodCaucus()
+          call) now also reset guessIdx, which the old code left
+          alone — reusing a bloc object without that would have opened
+          Phase 5's leader-guess UI already showing Phase 3's old
+          guess.
+        - New startPhase5BestDelegate(): reuses #motions-screen/
+          #motions-dais-bar, skipping initPhase2State() entirely (no
+          need for a fresh state.p2, just p2.stage +
+          p2.bestDelegateIdx). Room stays in normal seating — Stage 3
+          never re-enters bloc-huddle mode, so no extra render is
+          needed. New onBestDelegateSeatClick() wires every present
+          delegate's seat; clicking moves a single .leader-guess glow
+          (Phase 3's exact visual treatment, reused verbatim, no new
+          CSS) rather than adding to a set. New case
+          "phase5_best_delegate" in renderMotionsDais() shows the
+          prompt, then a "Confirm" button (new daisButton, "proceed"
+          class) only once a delegate is selected.
+        - New bestDelegateCorrectIdx(): the CarolinaMUN-style delegate
+          from whichever of state.phase3Blocs has leader === "carolina".
+          New confirmBestDelegate() compares the pick against it,
+          setting state.phase5.bestDelegateMistake, then hands off to
+          showPhase5CombinedDebrief() (now called from here instead of
+          directly from finishPhase4()'s Phase 5 branch).
+        - showPhase5CombinedDebrief() gained a 4th "Overall" heading,
+          folded into the same totalMistakes sum, showing only
+          "Misidentified Best Delegate." when bestDelegateMistake is
+          true — the only clause that heading ever shows.
+   v41: Phase 5, "Timed Crisis" (style.css v26→v27, index.html v14→v15).
+        Phases 2, 3, and 4's mechanics run back to back to back — no
+        debrief or transition screens in between, one combined 3-star
+        debrief at the very end. Reuses the same committee (no re-roll).
+        See DESIGN.md's Phase 5 section for the full spec.
+        - New state.phase5 (null outside Phase 5) and
+          state.phase2WinningType (set once, only by the real Phase 2's
+          own debrief resolving — Phase 5's own Stage 1 reuses
+          finishPhase2() but always takes its early-return branch first,
+          so it never sets this).
+        - Topic: one forced bucket for the whole phase
+          (state.phase5.topicBucket), picked once in
+          startPhase5Stage1() excluding whichever bucket Phases 2/3/4
+          used. New pickMotionTopic() constrains every Stage 1 mod/RR
+          motion's topic to that bucket; startUnmodCaucus()'s bucket
+          derivation uses it directly for Stage 2 (bypassing the usual
+          winning-motion-topic derivation); Stage 3 inherits it
+          automatically through the existing priorCaucus stash, no
+          separate override needed.
+        - Stage 1 (mod caucus, reused Phase 2 machinery): new
+          generateMotion() branches suppress slacker's unmod default
+          (mod/RR 50/50 instead) and Dem-Boy's guaranteed correction
+          (never set in Phase 5); Power-Del's Round 2 repeat-trap is
+          untouched, since speaker selection is fully generic and
+          needed no changes. New handleCallForMotions() branch raises
+          exactly 3 (not Phase 2's 5, all required — Phase 3/4's more
+          reliable coverage pattern), pre-assigning one a
+          _forcedMotionType via new state.phase5.stage1TargetType (the
+          type OPPOSITE state.phase2WinningType, coin-flipped if unset).
+          New handleCallFavor() branch rigs the vote directly off
+          motion.type against that target — same trust-the-rig pattern
+          as Phase 4 Stage 1's amendment rig.
+        - Stage 2 (unmod caucus, reused Phase 3 machinery): unchanged
+          mechanically, only the forced topic bucket above.
+        - Stage 3 (voting procedure, reused Phase 4 machinery):
+          unchanged mechanically except beginStage4() now forces
+          friendly: true for both papers, skipping the unfriendly path
+          entirely (same as Phase 4's normal friendly path).
+        - No screens between stages: finishPhase2()/finishPhase3Debrief()/
+          finishPhase4() each gained an early-return branch (checked
+          state.phase5.active) that stashes that stage's mistake tally
+          into state.phase5.mistakes and calls the next stage's start
+          function directly, instead of ever touching
+          #post-motions-screen. New startPhase5Stage1()/2/3() mirror
+          startPhase2()/startPhase3()/startPhase4()'s entry boilerplate
+          closely, just updating the phase label text and never wiping
+          state.phase5 (which lives outside state.p2 specifically so
+          initPhase2State()'s wipe between stages can't touch it).
+        - New showPhase5CombinedDebrief(), called once after Stage 3
+          resolves: sums all three stages' already-computed mistake
+          totals (each stage's own unchanged internal formula — Stage
+          1/3 uncapped per-category, Stage 2 its bloc-guess +
+          single-capped-timing-category rule) into one
+          stars = max(0, 3 - totalMistakes) scale, reusing
+          renderStarBlock("phase2-stars", ...) with a new grouped
+          summary (three headings — Moderated Caucus / Unmoderated
+          Caucus / Voting Procedure — each only its own nonzero
+          clauses, new .mistake-heading style in style.css v27).
+        - Dev panel: "5 · Timed Crisis" enabled (index.html v15,
+          replaces the old disabled "5 · Debrief" placeholder).
+          devSkipTo(5) auto-completes Phase 1 then calls
+          startPhase5Stage1() directly — Stage 1 needs no faked bloc/
+          caucus data at all (Stage 2's own startUnmodCaucus() builds
+          fresh blocs when IT runs), unlike Phases 3/4's dev-skips.
+   v40: Phase 4 full scoring implemented (disruptiveness pick, repeat
+        speaker, recognition misclick, speech timing), new Phase 4-
+        specific Disruptiveness Key, Phase 4 now ends with a real
+        debrief instead of a placeholder (style.css v25→v26,
+        index.html v13→v14). See DESIGN.md §8.11 for the full spec.
+        - New votingDisruptivenessRank(motion) — [amendVal, seconds,
+          orderVal] tuple, amendment status first. disruptivenessRank()'s
+          "voting" branch now just calls it; Phase 2/3 motions never
+          reach that branch, so their ranking (unmod/rr/mod) is
+          byte-for-byte unchanged. Used automatically by the existing
+          compareDisruptiveness()/mostDisruptiveUnresolvedIdx()/
+          p2.orderPicks machinery Stage 1 already shared with Phase 2/3
+          — no new plumbing needed for the "wrong disruptiveness pick"
+          mistake category.
+        - New Phase 4 Disruptiveness Key: #key-popup now holds two
+          static .key-rows blocks (index.html), #key-rows-p23 (Phase
+          2/3's, untouched) and #key-rows-p4 (new — Voting Procedure
+          tier on top with its 3 sub-rules in a new .voting-explain/
+          .voting-rule format mirroring .mod-explain/.mod-example
+          exactly, then Unmod/RR/Mod/Speaker's List in their existing
+          order, no Adjourn/Suspend row). initDisruptivenessKey()'s
+          openKey() picks which to show, fresh each open, from
+          state.p2.votingMode.
+        - New checkAvoidableRepeatSpeaker(paper, kind, arr), called
+          from onDelegateClickForStage2()'s completion branch: a no-op
+          unless processingIdx === 1 (paper 2). Each bloc's pool is
+          shared between paper 1's role and paper 2's opposite role
+          (forGroup/againstGroup swap which bloc they draw from between
+          the two papers), so the sibling paper's matching array is
+          always kind === "for" ? sibling.againstSpeakers :
+          sibling.forSpeakers. Flags a mistake when an unused pool
+          member existed and the player picked 2 already-used
+          delegates instead — p2.stage2.repeatSpeakerMistakes, capped
+          at 2 by construction (one per bloc).
+        - Recognition misclick + speech timing needed zero new
+          tracking: Stage 3 already writes into the shared
+          p2.speeches.log exactly like Phase 2's speeches do, and (v39)
+          that log was never cleared between papers, so it already
+          held all 8 speeches' entries by the time paper 2 concluded.
+        - finishPhase4() rewritten from the v38 placeholder into a real
+          debrief: Phase-2-style formula (uncapped, floor 0) summing
+          the 4 categories above, renderStarBlock("phase2-stars", ...)
+          + buildMultilineSummary() (same shared star-block Phase 2/3
+          already retitle/repopulate), new
+          renderPostMotionsScreen("phase4") case wiring #restart-btn to
+          "Adjourn & Restart" (replaces the v38 "phase4done" disabled
+          case) — the true end of the built game for this pass.
+   v39: Bugfix — paper 2's speakers panel opened with every name already
+        struck through (style.css/index.html unchanged from v24/v13).
+        - Root cause: startSpeechesRound() only builds a fresh
+          p2.speeches object (with an empty spokenSlots Set) the FIRST
+          time it's ever called; on every later call it just resets the
+          per-speech transient fields (currentSlot, mode, timer state,
+          etc.) and leaves log/spokenSlots alone, since Phase 2's
+          round1 -> round2 transition needs both to keep accumulating
+          across one continuous speakerOrder. beginStage3Speeches()
+          calls it once per paper, though, and slot indices 0-3 mean a
+          different set of 4 people each time — so paper 2's session
+          inherited paper 1's spokenSlots {0,1,2,3} and every name
+          rendered .spoken (crossed out) via
+          buildStage2SpeakerSlot()/renderStage2SpeakersPanel() before
+          anyone had spoken. Purely a visual bug; recognition/timer/
+          gavel/scoring were unaffected (spokenSlots is display-only —
+          endCurrentSpeech()'s sp.log entries, which are what any
+          future debrief would read, were already keyed and pushed
+          correctly regardless).
+        - Fix: beginStage3Speeches() now explicitly resets
+          p2.speeches.spokenSlots to a fresh Set right after calling
+          startSpeechesRound(), every time it runs. log is left alone
+          (still accumulates across both papers), since only
+          spokenSlots drives the strikethrough rendering.
+   v38: Phase 4 Stage 4 — amendment period + paper vote, for both
+        papers, then a genuine Phase 4 dead end (style.css/index.html
+        unchanged from v24/v13). Phase 4 now runs start to finish
+        procedurally, with no scoring yet. See DESIGN.md §8.10.
+        - Runs after a paper's 4 speeches conclude: new beginStage4()
+          replaces the old dead-end finishStage3Paper1() (removed) as
+          the "Conclude speeches" button's handler. Skips the whole
+          amendment section straight to the paper vote when
+          state.p2.stage2.motion.amendment is false; otherwise starts
+          with the announcement.
+        - Announcement (stage4_announcing_timer): narrative-only
+          button, "I will now start the {AMENDMENT_PERIOD_SECONDS}
+          second timer...". No real countdown. On click,
+          beginAmendmentAnnouncementAnimation() slides the OPPOSING
+          bloc's leader (new otherBlocForPaper()) to
+          STAGE4_CENTER_POS and back via plain seat.style.left/top
+          writes — reuses .delegate-seat's existing 0.6s left/top CSS
+          transition verbatim, the same mechanism Phase 3's
+          animateIntoBlocs() uses, no new CSS.
+        - Submission + declaration (stage4_reading_amendment,
+          stage4_declaring): "amendment submitted by {submitter}",
+          then "friendly or unfriendly?". Friendliness is fixed by
+          processing order, not randomized: handleAmendmentDeclaration()
+          sets it from p2.stage4.friendly = (processingIdx === 0),
+          matching the same "paper 1"/"paper 2" convention Stage 2/3
+          use. Both of the paper's sponsors (new shared paperSponsors()
+          helper, factored out of Stage 2's reading-button logic) get a
+          matching "Friendly"/"Unfriendly" speech bubble.
+        - Amendment vote (unfriendly path only): new
+          handleAmendmentCallFavor()/handleAmendmentCallOppose(), a
+          self-contained favor/oppose vote loop (2/3 majority,
+          Math.ceil) — NOT the existing motionsCollected-shaped
+          calling_favor/calling_oppose/handleCallFavor/handleCallOppose
+          machinery, since that path reverse-engineers a target pass/
+          fail first and doesn't support forcing specific delegates to
+          specific sides. Every present delegate votes randomly except
+          the submitter (always favor) and the paper's two sponsors,
+          the ones who declared it unfriendly (always oppose). No
+          abstentions. Purely procedural — the verdict has no effect
+          on the paper vote that follows.
+        - Paper vote (always runs): same self-contained shape,
+          handlePaperCallFavor()/handlePaperCallOppose(), simple
+          majority. Every present delegate votes randomly except the
+          paper's two sponsors (always favor). No abstentions. Verdict
+          announced narratively, doesn't branch the flow either way.
+        - advanceAfterPaperVote(): after paper 1's (first-processed)
+          vote, re-enters the exact same Stage 2 entry point
+          (enterStage2Paper(1)) to run the whole Stage 2 -> 3 -> 4
+          cycle again for paper 2 — beginStage4() is fully generic
+          over processingIdx, so no paper-2-specific code path was
+          needed anywhere in this stage. After paper 2's vote, new
+          finishPhase4() is a genuine dead end: reuses
+          #post-motions-screen (title, flavor line, .star-result
+          hidden — same pattern every prior Phase 4 stub used), new
+          renderPostMotionsScreen("phase4done") case (disabled
+          "Phase 4 scoring is the next build step." button, replaces
+          the v34 "phase4stage3" case since there's no next stub left
+          to name).
+   v37: Bugfix — rapid double-click on the mod-correction/dilatory
+        button during Phase 2 motion proposition could corrupt a
+        motion's `min` field to `undefined`, soft-locking speaker
+        selection once it passed (style.css/index.html unchanged from
+        v24/v13).
+        - Root cause: handleDilatory()/handleModCorrection() defer
+          their actual p2.stage change 500ms behind a setTimeout, but
+          leave the triggering .chair-prompt-btn live/clickable in the
+          DOM the whole time (renderMotionsDais(), which would remove
+          it, doesn't run until the timeout fires). A second click
+          inside that window re-ran handleModCorrection() while
+          del._pendingMotion had already been overwritten by the first
+          click's corrected motion (which has no .correctedMin field),
+          so generateCorrectedMotion()'s rMin read back undefined —
+          producing a written motion like "Belgium undefined 45
+          Regional" and, once voted through, an undefined
+          speakerCount() (NaN) that stalled speaker selection.
+        - Fix: new p2.motionTransitioning flag (reset in
+          initPhase2State()), set the instant either handler is
+          entered and cleared only inside its own setTimeout callback.
+          A second click during the 500ms window is now a no-op in
+          both handlers; the original single-click timing/behavior is
+          unchanged.
+   v36: Stage 3 speakers-panel highlighting + Phase 2 Round Robin skip
+        button (style.css/index.html unchanged from v24/v13).
+        - Stage 3's #speakers-list For:/Against: slots now get the
+          exact same current-speaker/active-speaker/spoken highlighting
+          Phase 2's renderSpeakersList() already applies, instead of
+          just showing static names. renderStage2SpeakersPanel() maps
+          each name's LOCAL for/against index to its GLOBAL
+          p2.speakerOrder slot (forSpeakers[i] -> i*2,
+          againstSpeakers[i] -> i*2+1, matching beginStage3Speeches()'s
+          fixed order) and passes it into buildStage2SpeakerSlot(),
+          which adds .current-speaker/.active-speaker while that slot
+          is being recognized/spoken and .spoken once it's done —
+          reusing the existing .speakers-list li.* CSS verbatim, no
+          new styles needed. Only active when p2.stage ===
+          "stage3_speeches"; Stage 2's selection-time rendering is
+          unaffected.
+        - New Round Robin skip: from the 4th speaker onward
+          (sp.currentSlot >= 3) in an RR speech loop, the "speaking"
+          dais gains a button in the exact spot Phase 3's caucus
+          fast-forward button occupies (first child of the
+          .speech-dais flex row, reusing its .caucus-ff-btn styling
+          verbatim). Clicking it (new autocompleteRRSpeeches()) marks
+          every remaining slot spoken with no sp.log entry — so
+          debrief scoring just has fewer graded speeches, never a
+          fabricated "perfect" pass and never a penalty for skipping —
+          then jumps straight to sp.mode = "done", landing on the same
+          "Conclude speeches" button a manually-completed RR reaches.
+          Not pressing it changes nothing: the player can still click
+          through every remaining speaker exactly as before. Gated on
+          p2.speakersMotion.type === "rr", which also keeps it from
+          ever appearing during Stage 3 speeches (motion.type
+          "voting").
+   v35: Every paper-name mention in Stage 2/3 chair buttons and Stage 3
+        speeches is now bolded (style.css/index.html unchanged from
+        v24/v13).
+        - The stage2_reading dais button now wraps ${paper.name} in
+          <strong>, matching the sponsor-country bolding it already
+          had.
+        - showSpeechBubble() gained an isHTML param (default false);
+          beginSpeech() passes true only for stage3 speeches
+          (sp.roundKey === "stage3"), so SPEECH_CONTENT's <strong>
+          tags actually render instead of showing as literal text —
+          every other caller (roll call responses, motions, generic
+          Phase 2 speech lines, caucus dialogue) keeps using
+          .textContent, unaffected.
+        - substituteStage3Line()'s {paperName} replacement now wraps
+          its substitution in <strong> too, for forward-compat with
+          any future line that uses it (unused by current content).
+        - SPEECH_CONTENT: wrapped every literal in-line mention of a
+          paper's own title in <strong> (only the Carolina-role joke
+          lines name a paper by its literal title; other roles refer
+          to "this paper"/"my paper" generically and were left alone).
+   v34: Phase 4 Stage 3 — for/against speeches for paper 1, wired to
+        authored content (style.css/index.html unchanged from v24/v13).
+        Amendments, the vote, and paper 2 are still not part of this
+        pass — see DESIGN.md §8.9.
+        - Speaking order is fixed from the paper's already-picked
+          arrays, no new selection UI: forSpeakers[0] ->
+          againstSpeakers[0] -> forSpeakers[1] -> againstSpeakers[1].
+          onDelegateClickForStage2's completion branch now calls
+          beginStage3Speeches() once against-speakers fill, instead
+          of the old dead-end finishStage2FirstPaper() (removed).
+        - beginStage3Speeches() sets p2.speakerOrder to that 4-long
+          order, p2.speakersMotion to state.p2.stage2.motion (so the
+          existing speechSecondsForMotion() picks up its `seconds`
+          field), then reuses startSpeechesRound({start:0,end:3}) and
+          applyRecognitionHighlight() verbatim — same seat-click
+          recognition, timer, and gavel-discipline loop Phase 2's mod/
+          RR speeches already use. New "stage3_speeches" p2.stage
+          value routes renderMotionsDais() to the existing
+          renderSpeechDais(bar); a small `sp.roundKey === "stage3"`
+          check inside beginSpeech() swaps in drawStage3SpeechLine()
+          instead of the generic drawSpeechLine() pool, and
+          renderSpeakersList() now defers to renderStage2SpeakersPanel()
+          for this stage so the For:/Against: sidebar built in Stage 2
+          isn't clobbered by the generic speakers-list renderer.
+        - New SPEECH_CONTENT table (phase4_speech_content.md,
+          transcribed verbatim): keyed by topic bucket, then paper
+          leader ("power"/"carolina" — which paper is on the floor),
+          then side ("for"/"against"), then speaker role (their
+          personality: "power"/"demboy"/"carolina"). Because each
+          paper's own leader is baked into the key, the right Power-
+          Del variant (leading/dominant vs. non-leading/sloppy-
+          pivoting) and Dem-Boy variant (glazes-boss vs. empowered)
+          falls out automatically from paper.leader + the speaker's
+          own personality — no extra role-branching logic needed.
+          drawStage3SpeechLine() derives for/against from the slot's
+          parity (even = for, odd = against), matching the fixed
+          speaking order.
+        - New substituteStage3Line(): extends the existing
+          {country}/{boss} placeholder convention (substituteLine())
+          with {carolinaLeadCountry} and {paperName}, per the content
+          file's placeholder list. {boss} always resolves to the
+          power-led bloc's Power-Del's country (looked up fresh from
+          state.p2.stage2.papers, not the speaker's own .boss field),
+          since it must resolve correctly even for a Dem-Boy reading a
+          non-glazing (empowered) line.
+        - finishStage3Paper1(): reuses the exact placeholder pattern
+          the old finishStage2FirstPaper() used (title, flavor line,
+          .star-result hidden, disabled restart-button dead end) —
+          just one step later now that Stage 2's completion flows
+          straight into these speeches instead of stopping. New
+          renderPostMotionsScreen("phase4stage3") case replaces the
+          old "phase4stage2" case; button copy bumped to "Stage 4
+          (amendments + vote) not yet built." since these speeches now
+          occupy the "Stage 3" slot in the stage numbering.
+        - No debrief scoring for this pass: sp.log keeps recording
+          each speech's warning/gavel/misclick outcomes exactly as
+          Phase 2's speeches do (untouched code path), so a future
+          debrief stage can read it, but nothing here computes stars.
    v33: Phase 4 Stage 2 — directive reading + for/against speaker
         selection for paper 1 only (style.css v24, index.html
         unchanged from v13). Amendments, voting, and paper 2 are NOT
@@ -559,6 +942,136 @@ const PAPER_NAMES = {
     opening:   { power: "Joint Position Statement", carolina: "Position Yourself" },
 };
 
+/* ==========================================================
+   PHASE 4 STAGE 3 — FOR/AGAINST SPEECH CONTENT (v34)
+   Transcribed verbatim from phase4_speech_content.md. Keyed by topic
+   bucket -> which paper is on the floor (its leader, "power" or
+   "carolina") -> side ("for"/"against") -> speaker role (their
+   personality: "power"/"demboy"/"carolina"). Placeholders {country},
+   {boss}, {carolinaLeadCountry}, {paperName} are substituted by
+   substituteStage3Line(). Keying content per-paper (rather than
+   per-role-only) is what makes a Power-Del's leading/dominant vs.
+   non-leading/sloppy-pivot variant fall out automatically from
+   paper.leader at lookup time — see drawStage3SpeechLine().
+========================================================== */
+const SPEECH_CONTENT = {
+    substance: {
+        power: {
+            for: {
+                power: "This framework exists because {country} built it, start to finish. Two percent of GDP, every country, no exceptions. I heard the idea of carve-outs for smaller economies floated in our own caucus and I killed it there for a reason. This room does not need a debate. It needs a number, and I already gave you the right one.",
+                demboy: "{boss} had this figured out from the start. Everyone pays the same two percent, no loopholes, no excuses. That is what real leadership on this issue looks like. This paper deserves your support.",
+                carolina: "Look, I'll be honest, when I heard '<strong>Sanctions Enforcement Framework</strong>' I thought we were naming a law firm. I actually pitched softer rates for smaller economies in our own room and got shut down flat. But under the boring name is a real idea, and better a strict paper than no paper.",
+            },
+            against: {
+                power: "Let's be direct. A flat two percent is lazy math dressed up as fairness. It does not account for a single real economy in this room, and it collapses the moment one country simply cannot pay it and walks. My bloc's floor system solves the exact problem this paper pretends does not exist. Vote it down.",
+                demboy: "We looked at this closely, and a flat two percent does not account for the fact that not every country can absorb that cost the same way. Our bloc's sliding scale gets to the same funding goal without breaking smaller delegations. This paper isn't there yet.",
+                carolina: "'<strong>Sanctions Enforcement Framework</strong>,' very official, very scary. But a scary name doesn't fix the fact that flat rates hit small countries the hardest. We came up with a sliding scale for a reason. Vote this one down.",
+            },
+        },
+        carolina: {
+            for: {
+                carolina: "Yes, it's called <strong>Fund Me Maybe</strong>, and no, I'm not sorry. But behind the name is the actual fix: a sliding scale, so rich countries pay more, poor countries pay less, and nobody gets crushed by a flat number. Funny name, serious paper.",
+                demboy: "This is the paper {country} actually helped build from scratch. A sliding scale by GDP, with a real floor so no country pays less than half a percent. It gets to the same funding total, fairly. That is worth backing.",
+                power: "I'll point out that the floor in this paper, half a percent minimum, that piece came directly out of my own mouth in caucus. As for the sliding math itself, the exact brackets, I'll leave that to the room to review. What I'll say is it simply feels like the fairer paper, and fair is what gets votes in here. Support it.",
+            },
+            against: {
+                power: "A sliding scale sounds compassionate right up until someone has to calculate it. My paper already solved this. Two percent, flat, for everyone, no argument, no bracket to dispute, no country pretending their economy is smaller than it is. This paper is a spreadsheet problem wearing a fairness costume. Reject it.",
+                demboy: "{boss} said it best, exceptions and brackets are exactly how enforcement falls apart. A sliding scale is just exceptions with extra steps. We should stick with the flat rate.",
+                carolina: "I like a good sliding scale as much as the next delegate, but '<strong>Fund Me Maybe</strong>' might be a little too honest about how uncertain this funding actually ends up being. A flat number, at least, is a number.",
+            },
+        },
+    },
+    process: {
+        power: {
+            for: {
+                power: "I set this timeline myself. Six months to start, one year to finish, the same clock for every country in this room. Someone in my own caucus wanted a check-in built in halfway through. I refused, because a check-in is just a scheduled excuse to fall behind. This paper works because I did not let it get soft.",
+                demboy: "{boss} was right that check-ins just turn into extensions. One clear timeline keeps everyone moving instead of stalling. This paper gets it done.",
+                carolina: "'<strong>Next Steps Protocol</strong>,' very serious, very committee-brochure. I pushed for a full year to start in our own room and got told no on the spot. Still, I'll give it this, at least nobody can pretend they didn't know the deadline.",
+            },
+            against: {
+                power: "One deadline for every country in this room is not discipline, it is indifference. It assumes every delegation starts from the same place, and none of them do. My bloc built a version with actual phases, because a timeline that ignores capacity is not a plan, it is a countdown clock nobody can survive. Vote no.",
+                demboy: "A single deadline for every country ignores that some delegations need to build things up in stages. Our version does the easy parts first so people can see progress before the hard part even starts. That is a stronger plan.",
+                carolina: "Six months to start, one year to finish, no check-ins in between, that's less a protocol and more a countdown clock with no pit stops. We built in phases for a reason. Vote no.",
+            },
+        },
+        carolina: {
+            for: {
+                carolina: "<strong>Define and Conquer</strong>, because we're doing this in order instead of all at once. Simple stuff first, so people can actually see this working before we ask them to commit to the hard parts. That's not slow, that's smart.",
+                demboy: "{country} helped build the actual phase structure here. Basics first, trust built early, harder pieces once people believe in it. That gets more countries to actually finish, not just start.",
+                power: "The one-year cap on the whole process, keeping a hard end date even with the phases built in, that part came from me. I won't walk through every phase boundary line by line, that's not necessary tonight. What matters is this paper actually respects how people work, and that's the kind of paper that earns support in this room.",
+            },
+            against: {
+                power: "Phases sound thoughtful and function as delay. Every phase boundary in this paper is another place for a country to quietly fall behind and blame the schedule. My timeline gives you one deadline and nowhere to hide. That is not harsh, that is honest. Reject this.",
+                demboy: "{boss} called it, phases and check-ins are just extensions with a different name. A single clock keeps everybody honest.",
+                carolina: "I like the idea of <strong>Define and Conquer</strong>, but 'define' can take a very long time in this room. Sometimes a flat deadline is what actually gets a paper conquered.",
+            },
+        },
+    },
+    people: {
+        power: {
+            for: {
+                power: "I wrote this plan myself, and I stand behind every line of it. Someone in my own caucus wanted us to go out and consult the people it affects before we finalized anything. We do not need to. I already accounted for what they need. This plan is complete, and it is ready to vote on tonight.",
+                demboy: "Right, {boss} and I did the research. We do not need to redo it.",
+                carolina: "'<strong>Humanitarian Relief Framework</strong>,' about as warm a title as a tax form. I wanted a line in here saying we actually talked to the people affected, and got told no because we hadn't. At least it's an honest paper, even if it's a cold one.",
+            },
+            against: {
+                power: "A relief plan written entirely in a room, by people who never once spoke to anyone it claims to help, is not a plan, it is a guess with a cover page. My bloc actually went and asked what people needed instead of assuming it. Reject a paper built on assumptions.",
+                demboy: "If we just respond without ever fixing what caused this, we are back here in five years dealing with the exact same crisis. Our paper actually goes after the cause. This one refuses to even mention it.",
+                carolina: "This paper is called <strong>Humanitarian Relief Framework</strong> and doesn't ask a single affected person what they think. Our paper actually goes to the heart of the matter. Vote for the one that listens.",
+            },
+        },
+        carolina: {
+            for: {
+                carolina: "<strong>Heart of the Matter</strong>, because we actually went looking for one, unlike some papers on this floor. We talked to the people this affects and we're not afraid to name why this keeps happening. That's not soft, that's the whole point.",
+                demboy: "If we just help people now but never fix the actual cause, we're back here in five years having this same debate. This paper finally goes after why this keeps happening, not just what to do about it today.",
+                power: "I negotiated the root-cause section down to two sentences in our own caucus, so I can tell you it's there and it's tight, I won't pretend I can walk you through every line of the reasoning behind it right now. What I'll say is this paper simply feels more honest than a plan someone wrote alone at a desk, and honesty is worth a vote.",
+            },
+            against: {
+                power: "Root causes make for a nice speech and a useless deadline. My plan is already written, already complete, and already accounts for what is needed without turning this into an open-ended listening tour. This paper trades results for feelings. Reject it.",
+                demboy: "{boss} already thought through every angle on this. We don't need to reopen a plan that's already finished.",
+                carolina: "I appreciate a paper with heart, truly, but sometimes a room needs a plan more than it needs a feeling. The other paper is already written and ready to go.",
+            },
+        },
+    },
+    opening: {
+        power: {
+            for: {
+                power: "When we speak, we lead with my point, because it is the strongest thing in this room and I am not interested in diluting it. Someone in my own caucus wanted to open by naming every country's contribution instead. I said no. One message, delivered clearly, wins more than a list of names ever will.",
+                demboy: "Right, one message hits harder than five. {boss}'s point goes first, and everything else follows.",
+                carolina: "'<strong>Joint Position Statement</strong>,' about as exciting as it sounds. I wanted us to open by naming everyone who worked on this and got told that wastes time. It's blunt, but at least the room knows exactly what we're saying and who's saying it.",
+            },
+            against: {
+                power: "One person's point, delivered first and loudest, is not a strategy, it is an ego with a microphone. My bloc opens with why this actually matters to the people in this room, and that earns real support instead of just attention. Reject the paper that leads with a name instead of a reason.",
+                demboy: "Everyone already knows what the problem is on paper. What they don't know is why it matters to them. Our opening actually makes people care before we ask for anything. This paper skips straight to the ask.",
+                carolina: "Nothing says 'trust us' like an opening statement that's really just one delegate's highlight reel. We open with the actual story. Vote for the paper that starts with a reason to care.",
+            },
+        },
+        carolina: {
+            for: {
+                carolina: "<strong>Position Yourself</strong>, because before you ask a room for anything, you have to give them a reason to care. We open with the real story behind this, not just a name and a demand. Yes, the title's a little on the nose. It's still the right move.",
+                demboy: "If we open with the cause, with why this actually matters, people care before we ever get to the ask. That's a stronger opening than jumping straight to a demand. This paper gets that.",
+                power: "I'm the one who insisted the opening story stay short so the actual point still lands fast, so I can tell you that compromise is built in. I won't walk through the full story beat by beat right now. What matters is this opening simply connects better with a room than jumping straight to a demand does, and that's worth voting for.",
+            },
+            against: {
+                power: "An opening built around a story is a stall tactic wearing empathy as a costume. My statement leads with the point because the point is what moves a room, not a warm-up act before it. This paper wastes the only moment you have everyone's attention. Reject it.",
+                demboy: "{boss}'s point is the clearest thing we have. It should go first, not get buried under a story.",
+                carolina: "A good story is nice, but by the time this paper gets to the actual ask, half the room's already checked their phone. Sometimes you just lead with the point.",
+            },
+        },
+    },
+};
+
+/* ==========================================================
+   PHASE 4 STAGE 4 — AMENDMENT PERIOD TUNING (v38)
+========================================================== */
+// Matches the "30 second amendment period" already hardcoded into
+// buildVotingMotion()'s spoken/written text for amendment-bearing
+// voting motions — one constant, referenced by both.
+const AMENDMENT_PERIOD_SECONDS = 30;
+// Approx. center of the room (SEAT_POSITIONS spans roughly left 8-92,
+// top 20-62), for the amendment-announcement leader slide.
+const STAGE4_CENTER_POS = { left: 50, top: 44 };
+
 // ---------- DATA POOLS ----------
 const COMMITTEES = [
     { name: "UNSC",   full: "United Nations Security Council" },
@@ -895,6 +1408,22 @@ const state = {
     correctionUsed: false,
     p2: null,
     usedSpeechLines: new Set(),
+    // v41 — set once when Phase 2's real debrief first resolves ("mod"
+    // or "rr"); Phase 5 Stage 1 rigs its own vote to guarantee the
+    // OTHER type passes. Never set by Phase 5's own Stage 1 (reuses
+    // finishPhase2() but takes an early-return branch before reaching
+    // the line that sets this).
+    phase2WinningType: null,
+    // v41 — non-null only while Phase 5 ("Timed Crisis") is running.
+    // See startPhase5Stage1() for the full shape.
+    phase5: null,
+    // v42 — set once by the real Phase 3's own startUnmodCaucus() call
+    // (the blocs array assignBlocs() built there). Bloc leadership
+    // persists across the whole session, so Phase 5's Stage 2 reuses
+    // these same bloc objects (same delegates, same leader) instead of
+    // calling assignBlocs() fresh — this is what Phase 5's Best
+    // Delegate stage checks the correct answer against.
+    phase3Blocs: null,
 };
 
 // ---------- UTILITIES ----------
@@ -1067,13 +1596,17 @@ function delegateIndexOf(delegate) {
     return state.delegates.indexOf(delegate);
 }
 
-function showSpeechBubble(delegate, text, containerId = "committee-room") {
+// v34 — isHTML lets Stage 3 speeches render <strong> around paper-name
+// mentions (SPEECH_CONTENT); every other caller keeps passing plain
+// text through textContent, unaffected.
+function showSpeechBubble(delegate, text, containerId = "committee-room", isHTML = false) {
     const seat = getSeatElement(delegateIndexOf(delegate), containerId);
     if (!seat) return;
     seat.querySelectorAll(".speech-bubble").forEach(b => b.remove());
     const bubble = document.createElement("div");
     bubble.className = "speech-bubble";
-    bubble.textContent = text;
+    if (isHTML) bubble.innerHTML = text;
+    else bubble.textContent = text;
     seat.appendChild(bubble);
 }
 function clearSpeechBubble(delegate, containerId = "committee-room") {
@@ -1307,6 +1840,12 @@ function initPhase2State() {
         caucus: null,
         priorCaucus: null,
         stage2: null,
+        stage4: null, // v38 — set fresh by beginStage4() for each paper
+        // v37 — reentrancy guard for handleDilatory()/handleModCorrection(),
+        // both of which defer their actual stage change 500ms behind a
+        // setTimeout while leaving their triggering button live/clickable
+        // in the DOM for that whole window. See those functions.
+        motionTransitioning: false,
     };
 }
 
@@ -1352,12 +1891,12 @@ function buildVotingMotion(delegate, combo) {
         "Motion to enter voting procedure in " +
         (order === "reverse" ? "reverse order submitted" : "order submitted") +
         " with a 2 for/2 against with " + seconds + " seconds speaking time " +
-        (amendment ? "and a 30 second amendment period" : "and straight into voting");
+        (amendment ? `and a ${AMENDMENT_PERIOD_SECONDS} second amendment period` : "and straight into voting");
     const written =
         shortName(delegate.country) + " voting" +
         (order === "reverse" ? " rev" : "") +
         " 2/2 " + seconds + " sec" +
-        (amendment ? " 30 sec amend" : "");
+        (amendment ? ` ${AMENDMENT_PERIOD_SECONDS} sec amend` : "");
     return {
         type: "voting",
         order, seconds, amendment,
@@ -1366,15 +1905,19 @@ function buildVotingMotion(delegate, combo) {
     };
 }
 
+// v40 — Phase 4 Stage 1's own tuple order (amendment status outranks
+// speaking time outranks order), replacing the v30-v39 [orderVal,
+// seconds, amendVal] tuple this branch used. Phase 2/3 motions are
+// never type "voting", so they never reach this branch and are
+// unaffected — see the new Phase 4 Disruptiveness Key (DESIGN.md §8.11)
+// for the player-facing version of this same rule.
+function votingDisruptivenessRank(motion) {
+    const amendVal = motion.amendment ? 1 : 0;
+    const orderVal = motion.order === "reverse" ? 1 : 0;
+    return [amendVal, motion.seconds, orderVal];
+}
 function disruptivenessRank(motion) {
-    if (motion.type === "voting") {
-        // v30 — reverse order always outranks order submitted regardless of
-        // the rest; within the same order, 60 sec outranks 30 sec;
-        // amendment only breaks a tie where order AND seconds both match.
-        const orderVal = motion.order === "reverse" ? 1 : 0;
-        const amendVal = motion.amendment ? 1 : 0;
-        return [orderVal, motion.seconds, amendVal];
-    }
+    if (motion.type === "voting") return votingDisruptivenessRank(motion);
     if (motion.type === "unmod") {
         // v22 — longer unmods rank more disruptive.
         const m = motion.min || 0;
@@ -1392,7 +1935,8 @@ function compareDisruptiveness(a, b) {
     const rb = disruptivenessRank(b);
     if (ra[0] !== rb[0]) return ra[0] - rb[0];
     if (ra[1] !== rb[1]) return ra[1] - rb[1];
-    // v30 — voting-type ranks carry a 3rd tuple slot (amendment tiebreak);
+    // v30 — voting-type ranks carry a 3rd tuple slot (v40: order,
+    // breaking ties where amendment status AND seconds both match);
     // 2-element ranks (unmod/rr/mod) never reach this since both sides
     // would be undefined and the comparison is skipped.
     if (ra[2] !== undefined && rb[2] !== undefined && ra[2] !== rb[2]) return ra[2] - rb[2];
@@ -1656,7 +2200,11 @@ function renderMotionsDais() {
         // v33 — Phase 4 Stage 2
         case "stage2_reading": {
             const paper = currentStage2Paper();
-            const btn = daisButton(`I will now read out the paper called ${paper.name}.`);
+            const [sponsor1, sponsor2] = paperSponsors(paper);
+            const btn = daisButton(
+                `I will now read out the paper called <strong>${paper.name}</strong> sponsored by ` +
+                `<strong>${sponsor1.country}</strong> and <strong>${sponsor2.country}</strong>.`
+            );
             btn.addEventListener("click", () => {
                 p2.stage = "stage2_announcing_for";
                 renderMotionsDais();
@@ -1691,6 +2239,173 @@ function renderMotionsDais() {
             bar.appendChild(btn);
             break;
         }
+
+        // v34 — Phase 4 Stage 3: paper 1's 4 speeches, reusing the
+        // exact same speech-dais rendering Phase 2's mod/RR loop uses.
+        case "stage3_speeches": {
+            renderSpeechDais(bar);
+            break;
+        }
+
+        // v38 — Phase 4 Stage 4: amendment period + paper vote.
+        case "stage4_announcing_timer": {
+            const btn = daisButton(
+                `I will now start the ${AMENDMENT_PERIOD_SECONDS} second timer for you to bring your amendments to the dais.`
+            );
+            btn.addEventListener("click", beginAmendmentAnnouncementAnimation);
+            bar.appendChild(btn);
+            break;
+        }
+        case "stage4_reading_amendment": {
+            const submitter = p2.stage4.submitter;
+            const btn = daisButton(
+                `I will now read out the amendment submitted by <strong>${submitter.country}</strong>.`
+            );
+            btn.addEventListener("click", () => {
+                p2.stage = "stage4_declaring";
+                renderMotionsDais();
+            });
+            bar.appendChild(btn);
+            break;
+        }
+        case "stage4_declaring": {
+            const btn = daisButton(`Is this amendment friendly or unfriendly?`);
+            btn.addEventListener("click", handleAmendmentDeclaration);
+            bar.appendChild(btn);
+            break;
+        }
+        case "stage4_amendment_vote_announcing": {
+            const btn = daisButton(
+                `Seeing that this amendment is <b>unfriendly</b>, we will now vote with 2/3 majority on this amendment.`,
+                "dilatory"
+            );
+            btn.addEventListener("click", () => {
+                p2.stage = "stage4_amendment_calling_favor";
+                renderMotionsDais();
+            });
+            bar.appendChild(btn);
+            break;
+        }
+        case "stage4_amendment_calling_favor": {
+            const submitter = p2.stage4.submitter;
+            const btn = daisButton(
+                `All those in favor of <strong>${submitter.country}</strong>'s amendment please raise your placards high.`,
+                "vote-favor-btn"
+            );
+            btn.addEventListener("click", handleAmendmentCallFavor);
+            bar.appendChild(btn);
+            break;
+        }
+        case "stage4_amendment_showing_favor": {
+            const t = p2.stage4.amendmentTally;
+            const status = daisStatus(`<span class="tally">${t.favor} in favor</span>.`);
+            bar.appendChild(status);
+            setTimeout(() => {
+                p2.stage = "stage4_amendment_calling_oppose";
+                renderMotionsDais();
+            }, 1400);
+            break;
+        }
+        case "stage4_amendment_calling_oppose": {
+            const submitter = p2.stage4.submitter;
+            clearVoteVisuals();
+            const btn = daisButton(
+                `All those opposed to <strong>${submitter.country}</strong>'s amendment please raise your placards high.`,
+                "vote-oppose-btn"
+            );
+            btn.addEventListener("click", handleAmendmentCallOppose);
+            bar.appendChild(btn);
+            break;
+        }
+        case "stage4_amendment_showing_result": {
+            const t = p2.stage4.amendmentTally;
+            const status = daisStatus(
+                `<span class="tally">${t.favor} for / ${t.oppose} against</span> of ${t.needed} needed. ` +
+                (p2.stage4.amendmentVerdict === "pass"
+                    ? `<span class="verdict-pass">The amendment passes.</span>`
+                    : `<span class="verdict-fail">The amendment fails.</span>`)
+            );
+            bar.appendChild(status);
+            setTimeout(() => {
+                clearVoteVisuals();
+                p2.stage = "stage4_paper_calling_favor";
+                updateMotionsInstructions("Call the vote on the paper.");
+                renderMotionsDais();
+            }, 1800);
+            break;
+        }
+        case "stage4_paper_calling_favor": {
+            const paper = currentStage2Paper();
+            const [sponsor1, sponsor2] = paperSponsors(paper);
+            const btn = daisButton(
+                `All those in favor of <strong>${paper.name}</strong> with sponsors ` +
+                `<strong>${sponsor1.country}</strong> and <strong>${sponsor2.country}</strong> please raise your placards high.`,
+                "vote-favor-btn"
+            );
+            btn.addEventListener("click", handlePaperCallFavor);
+            bar.appendChild(btn);
+            break;
+        }
+        case "stage4_paper_showing_favor": {
+            const t = p2.stage4.paperTally;
+            const status = daisStatus(`<span class="tally">${t.favor} in favor</span>.`);
+            bar.appendChild(status);
+            setTimeout(() => {
+                p2.stage = "stage4_paper_calling_oppose";
+                renderMotionsDais();
+            }, 1400);
+            break;
+        }
+        case "stage4_paper_calling_oppose": {
+            const paper = currentStage2Paper();
+            const [sponsor1, sponsor2] = paperSponsors(paper);
+            clearVoteVisuals();
+            const btn = daisButton(
+                `All those opposed to <strong>${paper.name}</strong> with sponsors ` +
+                `<strong>${sponsor1.country}</strong> and <strong>${sponsor2.country}</strong> please raise your placards high.`,
+                "vote-oppose-btn"
+            );
+            btn.addEventListener("click", handlePaperCallOppose);
+            bar.appendChild(btn);
+            break;
+        }
+        case "stage4_paper_showing_result": {
+            const t = p2.stage4.paperTally;
+            const paper = currentStage2Paper();
+            const status = daisStatus(
+                `<span class="tally">${t.favor} for / ${t.oppose} against</span> of ${t.needed} needed. ` +
+                (p2.stage4.paperVerdict === "pass"
+                    ? `<strong>${paper.name}</strong> <span class="verdict-pass">passes.</span>`
+                    : `<strong>${paper.name}</strong> <span class="verdict-fail">fails.</span>`)
+            );
+            bar.appendChild(status);
+            setTimeout(() => {
+                clearVoteVisuals();
+                advanceAfterPaperVote();
+            }, 1800);
+            break;
+        }
+
+        // v42 — Phase 5's new Best Delegate stage, inserted right before
+        // the combined debrief.
+        case "phase5_best_delegate": {
+            if (p2.bestDelegateIdx == null) {
+                const status = daisStatus(
+                    `Click the delegate you believe deserves <strong>Best Delegate</strong>.`
+                );
+                bar.appendChild(status);
+            } else {
+                const del = state.delegates[p2.bestDelegateIdx];
+                const status = daisStatus(
+                    `<strong>${del.country}</strong> selected for Best Delegate.`
+                );
+                bar.appendChild(status);
+                const btn = daisButton("Confirm", "proceed");
+                btn.addEventListener("click", confirmBestDelegate);
+                bar.appendChild(btn);
+            }
+            break;
+        }
     }
 }
 
@@ -1710,9 +2425,25 @@ function renderSpeechDais(bar) {
     } else if (sp.mode === "speaking") {
         const delIdx = p2.speakerOrder[sp.currentSlot];
         const del = state.delegates[delIdx];
+        // v36 — from the 4th speaker onward in a Round Robin, let the
+        // player skip the rest of the speaker list instead of clicking
+        // through every remaining recognition/timer/gavel step by hand.
+        // Reuses .caucus-ff-btn's styling and its exact slot in the
+        // .speech-dais flex row (first child, left of the speaker
+        // label) — "the same spot as the fast forward button in
+        // Phase 3". isRR naturally excludes Stage 3 speeches, whose
+        // motion.type is "voting", not "rr".
+        const isRR = p2.speakersMotion && p2.speakersMotion.type === "rr";
+        const skipButtonHTML = (isRR && sp.currentSlot >= 3)
+            ? `<button class="caucus-ff-btn" id="rr-skip-btn"
+                       aria-label="Autocomplete remaining speeches" title="Autocomplete remaining speeches">
+                   <span class="caucus-ff-icon">&#9193;</span>
+               </button>`
+            : "";
         const wrap = document.createElement("div");
         wrap.className = "speech-dais";
         wrap.innerHTML = `
+            ${skipButtonHTML}
             <div class="speech-who">
                 <div class="speech-who-label">HAS THE FLOOR</div>
                 <div class="speech-who-name">${del.country}</div>
@@ -1731,8 +2462,20 @@ function renderSpeechDais(bar) {
         bar.appendChild(wrap);
         const gbtn = wrap.querySelector("#gavel-btn");
         if (gbtn) gbtn.addEventListener("click", onGavelClick);
+        const skipBtn = wrap.querySelector("#rr-skip-btn");
+        if (skipBtn) skipBtn.addEventListener("click", autocompleteRRSpeeches);
     } else if (sp.mode === "done") {
         const p2Ref = state.p2;
+        // v34 — Stage 3's 4 fixed speeches have no round 2 of their
+        // own. v38: this used to be a dead end (finishStage3Paper1,
+        // removed) — now it hands off into Stage 4 (amendment period +
+        // paper vote) instead.
+        if (p2Ref.stage === "stage3_speeches") {
+            const btn = daisButton("Conclude speeches &rarr;", "proceed");
+            btn.addEventListener("click", beginStage4);
+            bar.appendChild(btn);
+            return;
+        }
         const isRound1 = p2Ref.stage === "round1_speeches";
         const single = isSingleRoundMod(p2Ref.totalSpeakers);
         const isRR = p2Ref.speakersMotion && p2Ref.speakersMotion.type === "rr";
@@ -1787,7 +2530,16 @@ function handleCallForMotions() {
         .filter(i => i !== -1);
 
     let chosen;
-    if (p2.votingMode) {
+    if (state.phase5 && state.phase5.active && state.phase5.stage === "mod") {
+        // v41 — Phase 5 Stage 1: raise exactly 3 (not Phase 2's 5), all
+        // 3 required, mirroring Phase 3/4's more reliable coverage
+        // pattern — one guaranteed the target type via _forcedMotionType
+        // (handleCallFavor() rigs the vote off that same target), the
+        // other two follow normal personality-based generation.
+        chosen = shuffle(presentIdxs).slice(0, 3);
+        const guaranteedIdx = pick(chosen);
+        state.delegates[guaranteedIdx]._forcedMotionType = state.phase5.stage1TargetType;
+    } else if (p2.votingMode) {
         // v30 — Phase 4 Stage 1: pick 3 random present delegates (any
         // personality) and pre-assign each a distinct, coverage-guaranteed
         // {order, seconds, amendment} combo.
@@ -1871,13 +2623,28 @@ function onDelegateClickForMotion(e) {
     }
 }
 
+// v37 — motionTransitioning guards against a rapid double-click on this
+// button: p2.stage stays "speaking" and the triggering .chair-prompt-btn
+// is left in the DOM, unchanged and still clickable, for the whole 500ms
+// setTimeout below (renderMotionsDais(), which would remove it, doesn't
+// run until the timeout fires). A second click inside that window used to
+// re-run generateSecondChanceMotion/generateCorrectedMotion a second time
+// harmlessly for Dilatory, but for the correction path it read
+// del._pendingMotion AFTER the first click had already overwritten it with
+// the corrected motion (which has no .correctedMin field), silently
+// producing min: undefined and a "[Country] undefined [sec] [topic]"
+// motion that soft-locked speaker selection once it passed. Fixed at the
+// source: block reentry until the deferred transition actually completes.
 function handleDilatory() {
     const p2 = state.p2;
+    if (p2.motionTransitioning) return;
+    p2.motionTransitioning = true;
     const del = p2.currentSpeaker;
     clearSpeechBubble(del, "committee-room-p2");
     const secondMotion = generateSecondChanceMotion(del);
     del._pendingMotion = secondMotion;
     setTimeout(() => {
+        p2.motionTransitioning = false;
         showSpeechBubble(del, secondMotion.spoken, "committee-room-p2");
         p2.stage = "speaking2";
         updateMotionsInstructions(`${del.country} tries again with a different motion.`);
@@ -1887,12 +2654,15 @@ function handleDilatory() {
 
 function handleModCorrection() {
     const p2 = state.p2;
+    if (p2.motionTransitioning) return;
+    p2.motionTransitioning = true;
     const del = p2.currentSpeaker;
     const original = del._pendingMotion;
     clearSpeechBubble(del, "committee-room-p2");
     const corrected = generateCorrectedMotion(del, original);
     del._pendingMotion = corrected;
     setTimeout(() => {
+        p2.motionTransitioning = false;
         showSpeechBubble(del, corrected.spoken, "committee-room-p2");
         p2.stage = "speaking2";
         updateMotionsInstructions(`${del.country} re-proposes with the corrected minutes.`);
@@ -1975,7 +2745,14 @@ function handleCallFavor() {
     const motion = p2.motionsCollected[p2.currentMotionIdx];
 
     let willPass;
-    if (p2.votingMode) {
+    if (state.phase5 && state.phase5.active && state.phase5.stage === "mod") {
+        // v41 — Phase 5 Stage 1 is rigged directly by motion type, same
+        // trust-the-rig pattern as Phase 4 Stage 1's amendment rig below:
+        // the type OPPOSITE state.phase2WinningType always passes; the
+        // same type always fails, no matter how many times it's called.
+        // Order-pick grading is unaffected.
+        willPass = motion.type === state.phase5.stage1TargetType;
+    } else if (p2.votingMode) {
         // v30 — Stage 1 voting is rigged directly by motion content, not
         // the normal fail-fail-pass retry pattern: amendment-bearing
         // motions always pass first try, others always fail no matter how
@@ -2101,6 +2878,20 @@ function finishPhase2() {
     const lateWarns        = speechLog.filter(e => e.warning === "late").length;
     const gavelMistakes    = speechLog.filter(e => e.gavelDown === "missed").length;
 
+    // v41 — Phase 5 Stage 1 reuses this exact function but shows no
+    // debrief screen of its own: stash the mistake tally into
+    // state.phase5 and chain straight into Stage 2 (unmod caucus)
+    // instead. Real Phase 2 (the branch below) is the only path that
+    // ever sets state.phase2WinningType.
+    if (state.phase5 && state.phase5.active) {
+        state.phase5.mistakes.mod = {
+            orderMistakes, repeatMistakes, recogMistakes, missedWarns, lateWarns, gavelMistakes,
+        };
+        startPhase5Stage2();
+        return;
+    }
+    if (state.phase2WinningType == null) state.phase2WinningType = passed.type;
+
     const totalMistakes = orderMistakes + repeatMistakes + recogMistakes
                         + missedWarns + lateWarns + gavelMistakes;
     const stars = Math.max(0, 3 - totalMistakes);
@@ -2133,6 +2924,18 @@ function finishPhase2() {
 }
 
 // ---- Motion generation ----
+// v41 — Phase 5 Stage 1 forces every mod/RR motion's topic to belong to
+// the phase's single forced bucket (state.phase5.topicBucket). Every
+// other caller (Phase 2, Phase 3's unmod-motion stage — whose motions
+// have no real topic anyway) gets a normal unconstrained pick(TOPICS).
+function pickMotionTopic() {
+    if (state.phase5 && state.phase5.active && state.phase5.stage === "mod") {
+        const pool = TOPICS.filter(t => TOPIC_BUCKETS[t.long] === state.phase5.topicBucket);
+        if (pool.length) return pick(pool);
+    }
+    return pick(TOPICS);
+}
+
 function generateMotion(delegate) {
     // v30 — forced voting combo takes precedence (Phase 4 Stage 1).
     if (delegate._forcedVotingCombo != null) {
@@ -2152,9 +2955,39 @@ function generateMotion(delegate) {
             topic: null,
         };
     }
+    // v41 — forced mod/rr type takes precedence (Phase 5 Stage 1's
+    // type-coverage guarantee; see startPhase5Stage1()/handleCallForMotions()).
+    if (delegate._forcedMotionType != null) {
+        const type = delegate._forcedMotionType;
+        delegate._forcedMotionType = null;
+        const topic = pickMotionTopic();
+        if (type === "rr") {
+            const sec = pick(RR_SECONDS);
+            return {
+                type: "rr",
+                spoken: `${sec} second round robin on ${topic.long}`,
+                written: `${shortName(delegate.country)} ${sec} sec rr ${topic.short}`,
+                topic,
+            };
+        }
+        const m = pickValidMod();
+        return {
+            type: "mod",
+            needsCorrection: false,
+            min: m.min,
+            sec: m.sec,
+            spoken: `${m.min} ${m.sec} on ${topic.long}`,
+            written: `${shortName(delegate.country)} ${m.min} ${m.sec} ${topic.short}`,
+            topic,
+        };
+    }
     const p = delegate.personality;
-    const topic = pick(TOPICS);
-    if (p === "slacker") {
+    const topic = pickMotionTopic();
+    // v41 — Phase 5 Stage 1: unmods never appear there, so slackers
+    // propose mod or RR like everyone else instead of always defaulting
+    // to unmod. Every other phase keeps the original unmod default.
+    const inPhase5Stage1 = state.phase5 && state.phase5.active && state.phase5.stage === "mod";
+    if (p === "slacker" && !inPhase5Stage1) {
         const time = pick(UNMOD_TIMES);
         return {
             type: "unmod",
@@ -2164,7 +2997,9 @@ function generateMotion(delegate) {
             topic: null,
         };
     }
-    if (p === "carolina") {
+    let wantsRR = p === "carolina";
+    if (p === "slacker" && inPhase5Stage1) wantsRR = Math.random() < 0.5;
+    if (wantsRR) {
         const sec = pick(RR_SECONDS);
         return {
             type: "rr",
@@ -2173,6 +3008,9 @@ function generateMotion(delegate) {
             topic,
         };
     }
+    // v41 — Dem-Boy's guaranteed correction never applies in Phase 5:
+    // startPhase5Stage1() never sets guaranteedBadMod, so this stays
+    // naturally false there with no extra guard needed here.
     const forceCorrection = delegate.guaranteedBadMod === true;
     if (forceCorrection) {
         const bad = pickCorrectionMod();
@@ -2394,6 +3232,15 @@ function renderSpeakersList(flashChanged = false) {
     const list = document.getElementById("speakers-list");
     const label = document.getElementById("speakers-motion-label");
     if (!panel || !list) return;
+
+    // v34 — Stage 3 speeches reuse this function's caller sites
+    // (beginSpeech/endCurrentSpeech) but keep showing the paper-name +
+    // For:/Against: sidebar Stage 2 already built, not this generic
+    // speaker-order list.
+    if (p2 && p2.stage === "stage3_speeches") {
+        renderStage2SpeakersPanel();
+        return;
+    }
 
     if (!p2 || !p2.speakerOrder || p2.speakerOrder.length === 0) {
         panel.hidden = true;
@@ -2712,6 +3559,7 @@ function extractRRSeconds(motion) {
 
 function speechSecondsForMotion(motion) {
     if (motion.type === "rr") return extractRRSeconds(motion);
+    if (motion.type === "voting") return motion.seconds; // v34 — Stage 3 speeches
     return motion.sec;
 }
 
@@ -2805,8 +3653,13 @@ function beginSpeech(slotIdx) {
         : 1;
     sp.warnRate = 10 / SPEECH_WARN_REAL_SEC;
 
-    const line = drawSpeechLine(del);
-    showSpeechBubble(del, line, "committee-room-p2");
+    // v34 — Stage 3 speeches draw from the authored paper content
+    // instead of the generic random-pool speech lines.
+    const isStage3 = sp.roundKey === "stage3";
+    const line = isStage3
+        ? drawStage3SpeechLine(del, slotIdx)
+        : drawSpeechLine(del);
+    showSpeechBubble(del, line, "committee-room-p2", isStage3);
 
     renderMotionsDais();
     renderSpeakersList(false);
@@ -3049,6 +3902,34 @@ function endCurrentSpeech({ gavelDown }) {
     }
 }
 
+// v36 — Round Robin 4th-speaker-onward skip (see renderSpeechDais's
+// "speaking" branch for the button itself). Marks every remaining slot
+// (the one in progress through rangeEnd) spoken with no sp.log entry,
+// so debrief scoring simply has fewer graded speeches to look at —
+// never a fabricated "perfect" and never a penalty for skipping. Jumps
+// straight to the same sp.mode = "done" state a real last speech
+// reaches, so the phase concludes exactly like the player clicked
+// through every remaining speech themselves.
+function autocompleteRRSpeeches() {
+    const p2 = state.p2;
+    const sp = p2.speeches;
+    if (!sp || sp.mode !== "speaking") return;
+
+    if (sp.timerId) { clearInterval(sp.timerId); sp.timerId = null; }
+    if (sp._spamTimer) { clearTimeout(sp._spamTimer); sp._spamTimer = null; }
+    clearRecognitionHighlight();
+
+    const del = state.delegates[p2.speakerOrder[sp.currentSlot]];
+    clearSpeechBubble(del, "committee-room-p2");
+
+    for (let i = sp.currentSlot; i <= sp.rangeEnd; i++) {
+        sp.spokenSlots.add(i);
+    }
+    sp.mode = "done";
+    renderMotionsDais();
+    renderSpeakersList(false);
+}
+
 // ==========================================================
 //  PHASE 3 — STAGE A/B: MOTIONS & VOTE
 // ==========================================================
@@ -3195,6 +4076,7 @@ function startPhase4Stage2(motion) {
         motion, // seconds/amendment are motion-level, not per-paper — read from here
         selectingKind: null,
         raisedPool: [],
+        repeatSpeakerMistakes: 0, // v40 — paper 1 -> paper 2 avoidable-repeat debrief count
     };
     clearRoomForSpeakerSelection();
     enterStage2Paper(0);
@@ -3277,15 +4159,44 @@ function onDelegateClickForStage2(e) {
 
     const filled = arr.filter(x => x != null).length;
     if (filled >= 2) {
+        checkAvoidableRepeatSpeaker(paper, kind, arr); // v40 — debrief tracking, paper 2 only
         clearStage2RaisePool();
         setTimeout(() => {
             if (kind === "for") {
                 p2.stage = "stage2_announcing_against";
                 renderMotionsDais();
             } else {
-                finishStage2FirstPaper();
+                beginStage3Speeches();
             }
         }, 350);
+    }
+}
+
+// v40 — debrief: an "avoidable repeat speaker" mistake. Each bloc's
+// pool of non-slacker present delegates is shared across both papers
+// in the opposite role (paper.forGroup === the sibling paper's
+// againstGroup, and vice versa — buildPaper() draws forGroup from its
+// own bloc and againstGroup from the other, so the two papers'
+// opposite-role groups are always the same bloc's pool). Only checked
+// once paper 2's (the second-processed paper's) selection for a given
+// role completes: if that pool has an eligible delegate who was never
+// selected on paper 1, and the player picked 2 who were both already
+// used on paper 1 instead, that's a mistake. A pool of exactly 2 (an
+// absent non-slacker delegate) means both were necessarily used on
+// paper 1 already — unavoidable, not penalized. Fires at most twice
+// total (once per bloc's pool, each crossing from paper 1 to paper 2
+// exactly once).
+function checkAvoidableRepeatSpeaker(paper, kind, arr) {
+    const p2 = state.p2;
+    const s2 = p2.stage2;
+    if (s2.processingIdx !== 1) return; // only paper 2 has a "prior paper" to compare against
+    const siblingPaper = s2.papers.find(p => p !== paper);
+    const siblingUsed = new Set(kind === "for" ? siblingPaper.againstSpeakers : siblingPaper.forSpeakers);
+    const pool = kind === "for" ? paper.forGroup : paper.againstGroup;
+    const freshAvailable = pool.some(d => !siblingUsed.has(delegateIndexOf(d)));
+    const bothAlreadyUsed = arr.every(idx => siblingUsed.has(idx));
+    if (freshAvailable && bothAlreadyUsed) {
+        s2.repeatSpeakerMistakes = (s2.repeatSpeakerMistakes || 0) + 1;
     }
 }
 
@@ -3301,28 +4212,708 @@ function updateStage2SelectionCounter() {
     tally.textContent = `${arr.filter(x => x != null).length} / 2`;
 }
 
-// v33 — for this pass, the stage always stops here regardless of which
-// paper (array-index 0 or 1) happened to process first; "paper 1" in the
-// forward-compat spec means "whichever paper is first in PROCESSING
-// order," not necessarily Bloc A's paper. Stage 3 (amendments + vote)
-// and paper 2's announcement are not yet built.
-function finishStage2FirstPaper() {
+// ==========================================================
+//  PHASE 4 STAGE 3 — FOR/AGAINST SPEECHES, PAPER 1 ONLY (v34)
+// ==========================================================
+// v34 — replaces the old finishStage2FirstPaper() dead end: once both
+// for/against speaker arrays are filled for the first-processed paper,
+// the flow now continues straight into these 4 speeches instead of
+// stopping. Reuses the Phase 2 mod/RR speech loop's timer/recognition/
+// gavel machinery verbatim (startSpeechesRound/applyRecognitionHighlight/
+// beginSpeech/tickSpeech/endCurrentSpeech, all untouched) — the only
+// new thing is a predetermined speakerOrder instead of one built via
+// raise-pool selection, and stage3-specific content lookup inside
+// beginSpeech(). See DESIGN.md §8.9.
+
+// Speech order is fixed by array position, per Stage 2's forward-compat
+// requirement: forSpeakers[0] -> againstSpeakers[0] -> forSpeakers[1]
+// -> againstSpeakers[1]. Even slots are "for", odd slots are "against".
+function beginStage3Speeches() {
     const p2 = state.p2;
     const paper = currentStage2Paper();
-    p2.stage = "stage2_done";
+    p2.speakerOrder = [
+        paper.forSpeakers[0], paper.againstSpeakers[0],
+        paper.forSpeakers[1], paper.againstSpeakers[1],
+    ];
+    // Both papers share the passed motion's `seconds` value (v33 §8.8) —
+    // speechSecondsForMotion() reads it via the "voting" type branch.
+    p2.speakersMotion = p2.stage2.motion;
+
+    startSpeechesRound({ start: 0, end: 3, roundKey: "stage3" });
+    // v39 — bugfix: startSpeechesRound() only builds a fresh p2.speeches
+    // object the FIRST time it's ever called (so Phase 2's round1 ->
+    // round2 transition keeps accumulating into the same log/
+    // spokenSlots across both rounds, which is correct there — they
+    // share one continuous speakerOrder). Stage 3 calls this once per
+    // paper, though, and slot indices 0-3 mean a different set of 4
+    // people each time; without this, paper 2's speakers panel opened
+    // with every name already struck through, carried over from paper
+    // 1's now-irrelevant spokenSlots. Force a fresh one every time.
+    p2.speeches.spokenSlots = new Set();
+    p2.stage = "stage3_speeches";
+    updateMotionsInstructions("Click the highlighted delegate to recognize them.");
+    renderStage2SpeakersPanel();
+    renderMotionsDais();
+    applyRecognitionHighlight();
+}
+
+// Resolves one speaker's line from SPEECH_CONTENT. paper.leader already
+// encodes which specific paper is on the floor, so keying on it (rather
+// than branching on role separately) is what makes the right Power-Del
+// variant (leading/dominant vs. non-leading/sloppy-pivot) and Dem-Boy
+// variant (glazes-boss vs. empowered) fall out automatically — see the
+// SPEECH_CONTENT table's header comment.
+function drawStage3SpeechLine(del, slotIdx) {
+    const paper = currentStage2Paper();
+    const side = slotIdx % 2 === 0 ? "for" : "against";
+    const topicBucket = state.p2.priorCaucus.topicBucket;
+    const template = SPEECH_CONTENT[topicBucket][paper.leader][side][del.personality];
+    return substituteStage3Line(template, del, paper);
+}
+
+// Extends the {country}/{boss} convention substituteLine() already uses
+// (see the caucus dialogue engine) with {carolinaLeadCountry} and
+// {paperName}. {boss} is looked up fresh from both Stage 2 papers'
+// blocs (not the speaker's own delegate.boss) so it resolves correctly
+// for both the glazing Dem-Boy AND any other role reading a line that
+// happens to reference it.
+function substituteStage3Line(template, del, paper) {
+    const s2 = state.p2.stage2;
+    const powerLedPaper = s2.papers.find(p => p.leader === "power");
+    const carolinaLedPaper = s2.papers.find(p => p.leader === "carolina");
+    const boss = powerLedPaper.bloc.power.country;
+    const carolinaLeadCountry = carolinaLedPaper.bloc.carolina.country;
+    return template
+        .replace(/\{country\}/g, del.country)
+        .replace(/\{boss\}/g, boss)
+        .replace(/\{carolinaLeadCountry\}/g, carolinaLeadCountry)
+        .replace(/\{paperName\}/g, `<strong>${paper.name}</strong>`);
+}
+
+// ==========================================================
+//  PHASE 4 STAGE 4 — AMENDMENT PERIOD + PAPER VOTE (v38)
+// ==========================================================
+// v38 — replaces the old finishStage3Paper1() dead end: once a paper's
+// 4 speeches conclude, the flow now continues into its amendment period
+// (if the passed voting motion has amendment: true) or straight to its
+// favor/oppose vote (if amendment: false), then loops back through
+// Stage 2 -> Stage 3 -> Stage 4 for paper 2, then a genuine Phase 4
+// dead end. See DESIGN.md §8.10. AMENDMENT_PERIOD_SECONDS and
+// STAGE4_CENTER_POS are declared up with the other tuning constants.
+
+// Shared by Stage 2's reading button and Stage 4's amendment/paper-vote
+// lines: this paper's leader sponsor (Power-Del if power-led, Carolina
+// if carolina-led) plus that bloc's Dem-Boy.
+function paperSponsors(paper) {
+    const sponsor1 = paper.leader === "power" ? paper.bloc.power : paper.bloc.carolina;
+    const sponsor2 = paper.bloc.demboy;
+    return [sponsor1, sponsor2];
+}
+
+// The bloc that did NOT author this paper — i.e. the sibling paper's
+// bloc. Stage 2's forGroup/againstGroup already encode this same
+// relationship at the delegate-list level; this exposes the BLOC object
+// itself, for its .leader/.power/.carolina fields.
+function otherBlocForPaper(paper) {
+    const s2 = state.p2.stage2;
+    return s2.papers.find(p => p !== paper).bloc;
+}
+
+function beginStage4() {
+    const p2 = state.p2;
+    const paper = currentStage2Paper();
+    // "Paper 1"/"paper 2" here means processing order, same convention
+    // Stage 2/3 already use — not necessarily Bloc A's paper.
+    const isFirstPaper = p2.stage2.processingIdx === 0;
+    const otherBloc = otherBlocForPaper(paper);
+    const submitter = otherBloc.leader === "power" ? otherBloc.power : otherBloc.carolina;
+    // v41 — Phase 5 Stage 3 forces both papers' amendments friendly,
+    // skipping the unfriendly 2/3-majority vote branch entirely (same
+    // as Phase 4's normal friendly path — see handleAmendmentDeclaration()).
+    const forcedFriendly = state.phase5 && state.phase5.active;
+
+    p2.stage4 = {
+        friendly: forcedFriendly ? true : isFirstPaper,
+        submitter,
+        favorIdxs: [],
+        amendmentTally: null,
+        amendmentVerdict: null,
+        paperTally: null,
+        paperVerdict: null,
+    };
+
+    if (p2.stage2.motion.amendment === true) {
+        p2.stage = "stage4_announcing_timer";
+        updateMotionsInstructions("Bring the amendment period to order.");
+    } else {
+        p2.stage = "stage4_paper_calling_favor";
+        updateMotionsInstructions("No amendment period. Move straight to the paper vote.");
+    }
+    renderMotionsDais();
+}
+
+// Slides the opposing bloc's leader to the center of the room and back,
+// reusing the same left/top inline-style + CSS-transition mechanism
+// Phase 3's animateIntoBlocs() uses for bloc formation (.delegate-seat's
+// existing 0.6s left/top transition, unchanged). Purely a narrative
+// beat — no real countdown runs.
+function beginAmendmentAnnouncementAnimation() {
+    const p2 = state.p2;
+    const leaderDel = p2.stage4.submitter;
+    const seat = getSeatElement(delegateIndexOf(leaderDel), "committee-room-p2");
+    if (seat) {
+        const orig = SEAT_POSITIONS[leaderDel.seat];
+        seat.style.left = `${STAGE4_CENTER_POS.left}%`;
+        seat.style.top = `${STAGE4_CENTER_POS.top}%`;
+        setTimeout(() => {
+            seat.style.left = `${orig.left}%`;
+            seat.style.top = `${orig.top}%`;
+        }, 900);
+    }
+    setTimeout(() => {
+        p2.stage = "stage4_reading_amendment";
+        renderMotionsDais();
+    }, 1600);
+}
+
+// Fixed per paper (not randomized): the first-processed paper's
+// amendment is always friendly, the second's is always unfriendly.
+// Both of the current paper's sponsors get a matching speech bubble.
+function handleAmendmentDeclaration() {
+    const p2 = state.p2;
+    const paper = currentStage2Paper();
+    const [sponsor1, sponsor2] = paperSponsors(paper);
+    const friendly = p2.stage4.friendly;
+    const label = friendly ? "Friendly" : "Unfriendly";
+    showSpeechBubble(sponsor1, label, "committee-room-p2");
+    showSpeechBubble(sponsor2, label, "committee-room-p2");
+    setTimeout(() => {
+        clearSpeechBubble(sponsor1, "committee-room-p2");
+        clearSpeechBubble(sponsor2, "committee-room-p2");
+        if (friendly) {
+            p2.stage = "stage4_paper_calling_favor";
+            updateMotionsInstructions("Friendly. Move straight to the paper vote.");
+        } else {
+            p2.stage = "stage4_amendment_vote_announcing";
+            updateMotionsInstructions("Unfriendly. Call the vote on the amendment.");
+        }
+        renderMotionsDais();
+    }, 1400);
+}
+
+// Unfriendly-amendment vote (2/3 majority). Every present delegate votes
+// randomly, except the amendment's submitter (always favor) and the
+// paper's two sponsors — the ones who declared it unfriendly — (always
+// oppose). No abstentions.
+function handleAmendmentCallFavor() {
+    const p2 = state.p2;
+    const paper = currentStage2Paper();
+    const [sponsor1, sponsor2] = paperSponsors(paper);
+    const submitterIdx = delegateIndexOf(p2.stage4.submitter);
+    const forcedOpposeIdxs = new Set([delegateIndexOf(sponsor1), delegateIndexOf(sponsor2)]);
+
+    const presentDels = state.delegates.filter(d => d.present);
+    const totalPresent = presentDels.length;
+    const needed = Math.ceil(totalPresent * 2 / 3);
+
+    const favorSet = new Set([submitterIdx]);
+    presentDels.forEach(d => {
+        const idx = delegateIndexOf(d);
+        if (idx === submitterIdx || forcedOpposeIdxs.has(idx)) return;
+        if (Math.random() < 0.5) favorSet.add(idx);
+    });
+
+    favorSet.forEach(idx => {
+        const seat = getSeatElement(idx, "committee-room-p2");
+        if (seat) seat.classList.add("vote-favor");
+    });
+
+    p2.stage4.favorIdxs = Array.from(favorSet);
+    p2.stage4.amendmentTally = { favor: favorSet.size, needed, totalPresent };
+    p2.stage = "stage4_amendment_showing_favor";
+    renderMotionsDais();
+}
+
+function handleAmendmentCallOppose() {
+    const p2 = state.p2;
+    const presentDels = state.delegates.filter(d => d.present);
+    const favorSet = new Set(p2.stage4.favorIdxs || []);
+    const opposeIdxs = [];
+    presentDels.forEach(d => {
+        const idx = delegateIndexOf(d);
+        if (!favorSet.has(idx)) opposeIdxs.push(idx);
+    });
+    opposeIdxs.forEach(idx => {
+        const seat = getSeatElement(idx, "committee-room-p2");
+        if (seat) seat.classList.add("vote-oppose");
+    });
+    p2.stage4.amendmentTally.oppose = opposeIdxs.length;
+    p2.stage4.amendmentVerdict =
+        p2.stage4.amendmentTally.favor >= p2.stage4.amendmentTally.needed ? "pass" : "fail";
+    p2.stage = "stage4_amendment_showing_result";
+    renderMotionsDais();
+}
+
+// Paper favor/oppose vote (simple majority). Runs for both friendly and
+// unfriendly papers, and regardless of the amendment's outcome — that
+// outcome has no downstream effect here. Every present delegate votes
+// randomly except the paper's two sponsors, who always vote favor. No
+// abstentions.
+function handlePaperCallFavor() {
+    const p2 = state.p2;
+    const paper = currentStage2Paper();
+    const [sponsor1, sponsor2] = paperSponsors(paper);
+    const sponsor1Idx = delegateIndexOf(sponsor1);
+    const sponsor2Idx = delegateIndexOf(sponsor2);
+
+    const presentDels = state.delegates.filter(d => d.present);
+    const totalPresent = presentDels.length;
+    const needed = Math.floor(totalPresent / 2) + 1;
+
+    const favorSet = new Set([sponsor1Idx, sponsor2Idx]);
+    presentDels.forEach(d => {
+        const idx = delegateIndexOf(d);
+        if (idx === sponsor1Idx || idx === sponsor2Idx) return;
+        if (Math.random() < 0.5) favorSet.add(idx);
+    });
+
+    favorSet.forEach(idx => {
+        const seat = getSeatElement(idx, "committee-room-p2");
+        if (seat) seat.classList.add("vote-favor");
+    });
+
+    p2.stage4.favorIdxs = Array.from(favorSet);
+    p2.stage4.paperTally = { favor: favorSet.size, needed, totalPresent };
+    p2.stage = "stage4_paper_showing_favor";
+    renderMotionsDais();
+}
+
+function handlePaperCallOppose() {
+    const p2 = state.p2;
+    const presentDels = state.delegates.filter(d => d.present);
+    const favorSet = new Set(p2.stage4.favorIdxs || []);
+    const opposeIdxs = [];
+    presentDels.forEach(d => {
+        const idx = delegateIndexOf(d);
+        if (!favorSet.has(idx)) opposeIdxs.push(idx);
+    });
+    opposeIdxs.forEach(idx => {
+        const seat = getSeatElement(idx, "committee-room-p2");
+        if (seat) seat.classList.add("vote-oppose");
+    });
+    p2.stage4.paperTally.oppose = opposeIdxs.length;
+    p2.stage4.paperVerdict =
+        p2.stage4.paperTally.favor >= p2.stage4.paperTally.needed ? "pass" : "fail";
+    p2.stage = "stage4_paper_showing_result";
+    renderMotionsDais();
+}
+
+// After paper 1's vote: restart the whole Stage 2 -> 3 -> 4 cycle for
+// paper 2 via the exact same entry point Stage 2 always used
+// (enterStage2Paper), just now reached a second time instead of never.
+// After paper 2's vote: Phase 4 is genuinely done for this pass.
+function advanceAfterPaperVote() {
+    const p2 = state.p2;
+    if (p2.stage2.processingIdx === 0) {
+        p2.stage4 = null;
+        enterStage2Paper(1);
+    } else {
+        finishPhase4();
+    }
+}
+
+// v38 — genuine dead end for this pass: both papers have been read,
+// debated, and voted on procedurally, but nothing is scored yet.
+// Reuses the same #post-motions-screen placeholder pattern every prior
+// stage stub in Phase 4 has used.
+// v40 — real Phase 4 debrief, replacing the old placeholder. Same
+// Phase-2-style formula (uncapped, floor at 0) across 4 categories:
+//
+// - Wrong disruptiveness pick (Stage 1): p2.orderPicks, same mechanism
+//   Phase 2/3 already use, now correctly graded against
+//   votingDisruptivenessRank via disruptivenessRank()'s "voting" branch.
+// - Avoidable repeat speaker (Stage 2, paper 1 -> paper 2 handoff only):
+//   p2.stage2.repeatSpeakerMistakes, tallied live by
+//   checkAvoidableRepeatSpeaker() as each paper 2 pool selection
+//   completes. Caps out at 2 (one per bloc's pool) by construction.
+// - Recognition misclick + speech timing (Stage 3, both papers'
+//   8 speeches combined): p2.speeches.log, the exact same shared
+//   speech-loop log Phase 2 reads — Stage 3 never cleared it between
+//   papers (only spokenSlots resets per paper, v39), so by the time
+//   paper 2's speeches conclude it already holds all 8 entries.
+//
+// Stage 4 (amendment period + paper votes) contributes nothing: it's
+// purely procedural/narrated, no player-judgment call to grade.
+function finishPhase4() {
+    const p2 = state.p2;
+    p2.stage = "phase4_done";
+    if (p2.speeches && p2.speeches.timerId) {
+        clearInterval(p2.speeches.timerId);
+        p2.speeches.timerId = null;
+    }
+    if (p2.speeches && p2.speeches._spamTimer) {
+        clearTimeout(p2.speeches._spamTimer);
+        p2.speeches._spamTimer = null;
+    }
+    const _sp = document.getElementById("speakers-panel");
+    if (_sp) _sp.hidden = true;
+    clearVoteVisuals();
+
+    const orderMistakes  = p2.orderPicks.filter(p => !p.correct).length;
+    const repeatMistakes = (p2.stage2 && p2.stage2.repeatSpeakerMistakes) || 0;
+    const speechLog      = (p2.speeches && p2.speeches.log) || [];
+    const recogMistakes  = speechLog.reduce((s, e) => s + (e.recognitionMisclicks || 0), 0);
+    const missedWarns    = speechLog.filter(e => e.warning === "missed").length;
+    const lateWarns      = speechLog.filter(e => e.warning === "late").length;
+    const gavelMistakes  = speechLog.filter(e => e.gavelDown === "missed").length;
+
+    // v41 — Phase 5 Stage 3 reuses this exact function but shows no
+    // debrief screen of its own: stash the mistake tally and hand off
+    // to Phase 5's own Best Delegate stage (v42), which itself hands
+    // off to the combined debrief once confirmed.
+    if (state.phase5 && state.phase5.active) {
+        state.phase5.mistakes.voting = {
+            orderMistakes, repeatMistakes, recogMistakes, missedWarns, lateWarns, gavelMistakes,
+        };
+        startPhase5BestDelegate();
+        return;
+    }
+
+    const totalMistakes = orderMistakes + repeatMistakes + recogMistakes
+                        + missedWarns + lateWarns + gavelMistakes;
+    const stars = Math.max(0, 3 - totalMistakes);
+
+    const clauses = [];
+    if (orderMistakes > 0)  clauses.push(`${orderMistakes} wrong disruptiveness pick${orderMistakes > 1 ? "s" : ""}.`);
+    if (repeatMistakes > 0) clauses.push(`${repeatMistakes} avoidable repeat speaker${repeatMistakes > 1 ? "s" : ""} called on.`);
+    if (recogMistakes > 0)  clauses.push(`${recogMistakes} wrong recognition${recogMistakes > 1 ? "s" : ""}.`);
+    if (missedWarns > 0)    clauses.push(`${missedWarns} missed 10-second warning${missedWarns > 1 ? "s" : ""}.`);
+    if (lateWarns > 0)      clauses.push(`${lateWarns} late 10-second warning${lateWarns > 1 ? "s" : ""}.`);
+    if (gavelMistakes > 0)  clauses.push(`${gavelMistakes} missed gavel-down${gavelMistakes > 1 ? "s" : ""}.`);
+    const summary = buildMultilineSummary(clauses, "A masterclass in voting procedure.");
+
+    const starResult = document.querySelector("#post-motions-screen .star-result");
+    if (starResult) starResult.style.display = "";
 
     const titleEl = document.querySelector("#post-motions-screen .phase-title");
-    if (titleEl) titleEl.textContent = "Speakers Selected";
+    if (titleEl) titleEl.textContent = "Phase 4 Concluded";
     const flavorEl = document.getElementById("post-motions-flavor");
     if (flavorEl) {
         flavorEl.innerHTML =
-            `For/against speakers for <strong>${paper.name}</strong> are set.`;
+            `Both directive papers have been read, debated, and voted on.`;
     }
-    // No debrief scoring exists yet for this partial phase.
-    const starResult = document.querySelector("#post-motions-screen .star-result");
-    if (starResult) starResult.style.display = "none";
+    renderStarBlock("phase2-stars", stars, summary);
 
-    renderPostMotionsScreen("phase4stage2");
+    renderPostMotionsScreen("phase4");
+    showScreen("post-motions-screen");
+}
+
+// ==========================================================
+//  PHASE 5 — "TIMED CRISIS" (v41)
+// ==========================================================
+// v41 — Phases 2, 3, and 4's mechanics run back to back to back, reusing
+// the exact same committee (no re-roll) and reusing every stage's own
+// underlying mechanism functions completely unmodified: the only
+// changes are the small, targeted branches sprinkled through
+// generateMotion()/handleCallForMotions()/handleCallFavor()/
+// startUnmodCaucus()/beginStage4() above, all gated on state.phase5.
+// There is no debrief or transition screen between stages — each
+// stage's own normal finish function (finishPhase2()/
+// finishPhase3Debrief()/finishPhase4()) already takes an early-return
+// branch when state.phase5.active is set (see above), stashing that
+// stage's mistake tally and chaining straight into the next stage's
+// start function instead of ever touching #post-motions-screen. Only
+// after Stage 3 (voting procedure) resolves does showPhase5CombinedDebrief()
+// finally show one screen, combining all three stages' tallies into a
+// single 3-star scale. See DESIGN.md's Phase 5 section for the full spec.
+
+function startPhase5Stage1() {
+    // Pick the forced topic bucket once, here, excluding whichever
+    // bucket Phases 2/3/4 used (state.p2.priorCaucus.topicBucket — the
+    // same value Phase 4's Stage 2 already reads, still present since
+    // nothing has wiped state.p2 since Phase 4 finished). Also resolve
+    // Stage 1's rig target: the type OPPOSITE whichever won the real
+    // Phase 2 (state.phase2WinningType), defaulting via a coin flip if
+    // Phase 2 never actually ran (a straight dev-skip to Phase 5).
+    const priorBucket = state.p2 && state.p2.priorCaucus && state.p2.priorCaucus.topicBucket;
+    const otherBuckets = Object.keys(PAPER_NAMES).filter(b => b !== priorBucket);
+    const topicBucket = otherBuckets.length ? pick(otherBuckets) : pick(Object.keys(PAPER_NAMES));
+    const winningType = state.phase2WinningType || pick(["mod", "rr"]);
+    const stage1TargetType = winningType === "mod" ? "rr" : "mod";
+
+    state.phase5 = {
+        active: true,
+        stage: "mod", // "mod" | "unmod" | "voting" — current stage
+        topicBucket,
+        stage1TargetType,
+        mistakes: { mod: null, unmod: null, voting: null },
+        bestDelegateMistake: false, // v42 — set by confirmBestDelegate()
+    };
+
+    showScreen("motions-screen");
+    initPhase2State();
+
+    const label = document.getElementById("motions-phase-label");
+    if (label) label.textContent = "Phase 5 of 5 · Moderated Caucus";
+    const body = document.querySelector(".phase2-body");
+    if (body) body.classList.remove("caucus-mode");
+    const agenda = document.querySelector(".agenda-panel");
+    if (agenda) agenda.classList.remove("hidden-in-caucus");
+
+    // Clear leftover per-delegate flags from earlier phases.
+    state.delegates.forEach(d => {
+        d.guaranteedBadMod = false;
+        d._pendingMotion = null;
+        d._forcedUnmodMinutes = null;
+        d._forcedVotingCombo = null;
+        d._forcedMotionType = null;
+    });
+
+    renderCommitteeRoom("committee-room-p2");
+    state.delegates.forEach((del, idx) => {
+        const seat = getSeatElement(idx, "committee-room-p2");
+        if (!seat) return;
+        if (del.markedAs === "absent" || !del.present) seat.classList.add("marked-absent");
+    });
+
+    renderAgenda();
+    renderMotionsDais();
+    updateMotionsInstructions("Ask the floor for motions.");
+}
+
+// No transition screen: the chair's opening prompt re-appearing IS the
+// transition, right as the phase label silently updates.
+function startPhase5Stage2() {
+    state.phase5.stage = "unmod";
+
+    showScreen("motions-screen");
+    initPhase2State();
+    state.p2.unmodMode = true;
+    state.p2.votingMode = false;
+
+    const label = document.getElementById("motions-phase-label");
+    if (label) label.textContent = "Phase 5 of 5 · Unmoderated Caucus";
+    const body = document.querySelector(".phase2-body");
+    if (body) body.classList.remove("caucus-mode");
+    const agenda = document.querySelector(".agenda-panel");
+    if (agenda) agenda.classList.remove("hidden-in-caucus");
+
+    state.delegates.forEach(d => {
+        d.guaranteedBadMod = false;
+        d._pendingMotion = null;
+        d._forcedUnmodMinutes = null;
+        d._forcedVotingCombo = null;
+        d._forcedMotionType = null;
+    });
+
+    renderCommitteeRoom("committee-room-p2");
+    state.delegates.forEach((del, idx) => {
+        const seat = getSeatElement(idx, "committee-room-p2");
+        if (!seat) return;
+        if (del.markedAs === "absent" || !del.present) seat.classList.add("marked-absent");
+    });
+
+    renderAgenda();
+    renderMotionsDais();
+    updateMotionsInstructions("Ask the floor for motions.");
+}
+
+function startPhase5Stage3() {
+    state.phase5.stage = "voting";
+    // Stashes Stage 2's fresh blocs/topicBucket (the forced bucket,
+    // unchanged since startUnmodCaucus() set it) across the wipe below —
+    // same pattern startPhase4() itself uses.
+    const priorCaucus = state.p2 && state.p2.caucus;
+
+    showScreen("motions-screen");
+    initPhase2State();
+    state.p2.votingMode = true;
+    state.p2.unmodMode = false;
+    state.p2.priorCaucus = priorCaucus;
+
+    const label = document.getElementById("motions-phase-label");
+    if (label) label.textContent = "Phase 5 of 5 · Voting Procedure";
+    const body = document.querySelector(".phase2-body");
+    if (body) body.classList.remove("caucus-mode");
+    const agenda = document.querySelector(".agenda-panel");
+    if (agenda) agenda.classList.remove("hidden-in-caucus");
+
+    state.delegates.forEach(d => {
+        d.guaranteedBadMod = false;
+        d._pendingMotion = null;
+        d._forcedUnmodMinutes = null;
+        d._forcedVotingCombo = null;
+        d._forcedMotionType = null;
+    });
+
+    renderCommitteeRoom("committee-room-p2");
+    state.delegates.forEach((del, idx) => {
+        const seat = getSeatElement(idx, "committee-room-p2");
+        if (!seat) return;
+        if (del.markedAs === "absent" || !del.present) seat.classList.add("marked-absent");
+    });
+
+    renderAgenda();
+    renderMotionsDais();
+    updateMotionsInstructions("Ask the floor for motions.");
+}
+
+// v42 — Best Delegate stage: inserted right after Stage 3 (voting
+// procedure) resolves and right before the combined debrief. Reuses
+// the same #motions-screen/#motions-dais-bar every other stage does,
+// but skips initPhase2State() entirely — this doesn't need a fresh
+// state.p2, just a new stage value and one scratch field on the
+// existing one. Room stays in normal seating (never re-entered
+// caucus/bloc-huddle mode since Stage 3), no extra render needed.
+function startPhase5BestDelegate() {
+    const p2 = state.p2;
+    p2.stage = "phase5_best_delegate";
+    p2.bestDelegateIdx = null;
+
+    const label = document.getElementById("motions-phase-label");
+    if (label) label.textContent = "Phase 5 of 5 · Best Delegate";
+
+    // Clear Stage 3's leftover interactive seat state, then wire every
+    // PRESENT delegate's seat clickable (absent ones stay inert).
+    document.querySelectorAll("#committee-room-p2 .delegate-seat").forEach(s => {
+        s.classList.remove("raised", "raised-voting", "requesting",
+                           "vote-favor", "vote-oppose", "active",
+                           "awaiting-recognition", "misclick-seat", "leader-guess");
+        s.removeEventListener("click", onBestDelegateSeatClick);
+        const idx = parseInt(s.dataset.index, 10);
+        if (state.delegates[idx] && state.delegates[idx].present) {
+            s.addEventListener("click", onBestDelegateSeatClick);
+        }
+    });
+
+    updateMotionsInstructions("Click the delegate who deserves Best Delegate.");
+    renderMotionsDais();
+}
+
+// Selection is swap-able before confirming: clicking a different
+// delegate moves the gold glow, it never adds to it. Reuses Phase 3's
+// .leader-guess visual treatment verbatim (no new CSS) — minus its
+// persistent-until-caucus-ends behavior, since this is a single
+// confirm-once action with no timer to survive.
+function onBestDelegateSeatClick(e) {
+    const p2 = state.p2;
+    if (p2.stage !== "phase5_best_delegate") return;
+    const seat = e.currentTarget;
+    const idx = parseInt(seat.dataset.index, 10);
+
+    if (p2.bestDelegateIdx != null) {
+        const prevSeat = getSeatElement(p2.bestDelegateIdx, "committee-room-p2");
+        if (prevSeat) prevSeat.classList.remove("leader-guess");
+    }
+    p2.bestDelegateIdx = idx;
+    seat.classList.add("leader-guess");
+    renderMotionsDais();
+}
+
+// The correct answer: the CarolinaMUN-style delegate who led one of
+// the two blocs — the same individual from the ORIGINAL Phase 3
+// caucus (state.phase3Blocs), since bloc leadership persists across
+// the whole session and is never re-rolled for Phase 5 (see
+// startUnmodCaucus()'s v42 bloc-reuse branch).
+function bestDelegateCorrectIdx() {
+    const blocs = state.phase3Blocs;
+    if (!blocs) return -1;
+    const carolinaLedBloc = blocs.find(b => b.leader === "carolina");
+    if (!carolinaLedBloc || !carolinaLedBloc.carolina) return -1;
+    return delegateIndexOf(carolinaLedBloc.carolina);
+}
+
+function confirmBestDelegate() {
+    const p2 = state.p2;
+    if (p2.bestDelegateIdx == null) return;
+
+    // Wrong pick (including no pick, if ever reachable) costs one
+    // mistake under the combined debrief's "Overall" heading; a
+    // correct pick contributes nothing.
+    state.phase5.bestDelegateMistake = p2.bestDelegateIdx !== bestDelegateCorrectIdx();
+
+    document.querySelectorAll("#committee-room-p2 .delegate-seat").forEach(s => {
+        s.classList.remove("leader-guess");
+        s.removeEventListener("click", onBestDelegateSeatClick);
+    });
+
+    showPhase5CombinedDebrief();
+}
+
+// One combined debrief for the entire phase, shown once after the Best
+// Delegate stage resolves. Each earlier stage's mistake tally was
+// already computed and stashed by that stage's own unchanged internal
+// formula — this just sums them (plus the Best Delegate pick) into a
+// single 3-star scale and groups their clauses under four headings.
+function showPhase5CombinedDebrief() {
+    const m = state.phase5.mistakes;
+
+    const modTotal = m.mod.orderMistakes + m.mod.repeatMistakes + m.mod.recogMistakes
+                   + m.mod.missedWarns + m.mod.lateWarns + m.mod.gavelMistakes;
+    const unmodTimingMistake = (m.unmod.warnMissed || m.unmod.warnLate || m.unmod.gavelMissed) ? 1 : 0;
+    const unmodTotal = m.unmod.blocMistakes + unmodTimingMistake;
+    const votingTotal = m.voting.orderMistakes + m.voting.repeatMistakes + m.voting.recogMistakes
+                       + m.voting.missedWarns + m.voting.lateWarns + m.voting.gavelMistakes;
+    // v42 — Best Delegate: wrong pick (including no pick, if ever
+    // reachable) costs one mistake here, folded into the same total.
+    const overallTotal = state.phase5.bestDelegateMistake ? 1 : 0;
+
+    const totalMistakes = modTotal + unmodTotal + votingTotal + overallTotal;
+    const stars = Math.max(0, 3 - totalMistakes);
+
+    const modClauses = [];
+    if (m.mod.orderMistakes > 0)  modClauses.push(`${m.mod.orderMistakes} wrong order pick${m.mod.orderMistakes > 1 ? "s" : ""}.`);
+    if (m.mod.repeatMistakes > 0) modClauses.push(`${m.mod.repeatMistakes} repeat speaker${m.mod.repeatMistakes > 1 ? "s" : ""} called on.`);
+    if (m.mod.recogMistakes > 0)  modClauses.push(`${m.mod.recogMistakes} wrong recognition${m.mod.recogMistakes > 1 ? "s" : ""}.`);
+    if (m.mod.missedWarns > 0)    modClauses.push(`${m.mod.missedWarns} missed 10-second warning${m.mod.missedWarns > 1 ? "s" : ""}.`);
+    if (m.mod.lateWarns > 0)      modClauses.push(`${m.mod.lateWarns} late 10-second warning${m.mod.lateWarns > 1 ? "s" : ""}.`);
+    if (m.mod.gavelMistakes > 0)  modClauses.push(`${m.mod.gavelMistakes} missed gavel-down${m.mod.gavelMistakes > 1 ? "s" : ""}.`);
+
+    const unmodClauses = [];
+    if (m.unmod.blocMistakes === 1) unmodClauses.push("1 bloc leader missed or misread.");
+    if (m.unmod.blocMistakes === 2) unmodClauses.push("Both bloc leaders missed or misread.");
+    if (m.unmod.warnMissed) unmodClauses.push("Never gave the one-minute warning.");
+    if (m.unmod.warnLate)   unmodClauses.push("Gave the one-minute warning late.");
+    if (m.unmod.gavelMissed) unmodClauses.push("Caucus ran over, no gavel-down.");
+
+    const votingClauses = [];
+    if (m.voting.orderMistakes > 0)  votingClauses.push(`${m.voting.orderMistakes} wrong disruptiveness pick${m.voting.orderMistakes > 1 ? "s" : ""}.`);
+    if (m.voting.repeatMistakes > 0) votingClauses.push(`${m.voting.repeatMistakes} avoidable repeat speaker${m.voting.repeatMistakes > 1 ? "s" : ""} called on.`);
+    if (m.voting.recogMistakes > 0)  votingClauses.push(`${m.voting.recogMistakes} wrong recognition${m.voting.recogMistakes > 1 ? "s" : ""}.`);
+    if (m.voting.missedWarns > 0)    votingClauses.push(`${m.voting.missedWarns} missed 10-second warning${m.voting.missedWarns > 1 ? "s" : ""}.`);
+    if (m.voting.lateWarns > 0)      votingClauses.push(`${m.voting.lateWarns} late 10-second warning${m.voting.lateWarns > 1 ? "s" : ""}.`);
+    if (m.voting.gavelMistakes > 0)  votingClauses.push(`${m.voting.gavelMistakes} missed gavel-down${m.voting.gavelMistakes > 1 ? "s" : ""}.`);
+
+    // v42 — the only clause the "Overall" heading ever shows.
+    const overallClauses = [];
+    if (state.phase5.bestDelegateMistake) overallClauses.push("Misidentified Best Delegate.");
+
+    const sections = [
+        { heading: "Moderated Caucus", clauses: modClauses },
+        { heading: "Unmoderated Caucus", clauses: unmodClauses },
+        { heading: "Voting Procedure", clauses: votingClauses },
+        { heading: "Overall", clauses: overallClauses },
+    ];
+    const nonEmpty = sections.filter(s => s.clauses.length > 0);
+    const summary = nonEmpty.length
+        ? nonEmpty
+            .map(s => `<div class="mistake-heading">${s.heading}</div>` + s.clauses.map(c => `<div>${c}</div>`).join(""))
+            .join("")
+        : `<div>A flawless crisis, gavel to gavel.</div>`;
+
+    const starResult = document.querySelector("#post-motions-screen .star-result");
+    if (starResult) starResult.style.display = "";
+
+    const titleEl = document.querySelector("#post-motions-screen .phase-title");
+    if (titleEl) titleEl.textContent = "Phase 5 Concluded";
+    const flavorEl = document.getElementById("post-motions-flavor");
+    if (flavorEl) {
+        flavorEl.innerHTML =
+            `Moderated caucus, unmoderated caucus, and voting procedure, back to back with no stops.`;
+    }
+    renderStarBlock("phase2-stars", stars, summary);
+
+    renderPostMotionsScreen("phase5");
     showScreen("post-motions-screen");
 }
 
@@ -3356,17 +4947,23 @@ function renderStage2SpeakersPanel(justFilledSlot) {
     if (label) label.textContent = paper.name;
 
     const kind = s2.selectingKind;
+    // v36 — during Stage 3 speeches, slot highlighting mirrors Phase 2's
+    // renderSpeakersList() exactly (current-speaker/active-speaker/
+    // spoken), keyed off the GLOBAL speakerOrder slot each name occupies:
+    // forSpeakers[i] -> slot i*2, againstSpeakers[i] -> slot i*2 + 1 (the
+    // fixed for->against->for->against order beginStage3Speeches() uses).
+    const sp = p2.stage === "stage3_speeches" ? p2.speeches : null;
     list.innerHTML = "";
     if (paper._forStarted) {
         list.appendChild(buildSpeakersSubheader("For:"));
         paper.forSpeakers.forEach((idx, i) => {
-            list.appendChild(buildStage2SpeakerSlot(idx, i, kind === "for" && i === justFilledSlot));
+            list.appendChild(buildStage2SpeakerSlot(idx, i, kind === "for" && i === justFilledSlot, sp, i * 2));
         });
     }
     if (paper._againstStarted) {
         list.appendChild(buildSpeakersSubheader("Against:"));
         paper.againstSpeakers.forEach((idx, i) => {
-            list.appendChild(buildStage2SpeakerSlot(idx, i, kind === "against" && i === justFilledSlot));
+            list.appendChild(buildStage2SpeakerSlot(idx, i, kind === "against" && i === justFilledSlot, sp, i * 2 + 1));
         });
     }
 }
@@ -3378,7 +4975,7 @@ function buildSpeakersSubheader(text) {
     return li;
 }
 
-function buildStage2SpeakerSlot(idx, i, justFilled) {
+function buildStage2SpeakerSlot(idx, i, justFilled, sp, globalSlot) {
     const li = document.createElement("li");
     li.className = "stage2-slot";
     const num = document.createElement("span");
@@ -3392,6 +4989,16 @@ function buildStage2SpeakerSlot(idx, i, justFilled) {
         nameSpan.textContent = state.delegates[idx].country;
         li.appendChild(nameSpan);
         if (justFilled) li.classList.add("just-filled");
+        if (sp) {
+            if (sp.spokenSlots && sp.spokenSlots.has(globalSlot)) {
+                li.classList.add("spoken");
+            }
+            if (sp.mode === "recognizing" && globalSlot === sp.currentSlot) {
+                li.classList.add("current-speaker");
+            } else if (sp.mode === "speaking" && globalSlot === sp.currentSlot) {
+                li.classList.add("active-speaker");
+            }
+        }
     }
     return li;
 }
@@ -3418,10 +5025,32 @@ function startUnmodCaucus(motion) {
     });
     clearAllBubbles();
 
-    // Build blocs.
-    const blocs = assignBlocs();
-    const topicLong = (p2.priorTopic && p2.priorTopic.long) || "";
-    const bucket = TOPIC_BUCKETS[topicLong] || "substance";
+    // v42 — Build blocs. Phase 5's Stage 2 reuses the ORIGINAL Phase 3
+    // bloc assignment (bloc leadership persists across the whole
+    // session — Phase 5's own Best Delegate stage depends on this)
+    // instead of calling assignBlocs() fresh; falls back to a fresh
+    // call only if Phase 3 never actually ran (a straight dev-skip to
+    // Phase 5). The real Phase 3 (every other caller) builds fresh
+    // blocs as always and stashes them as that original for later.
+    let blocs;
+    if (state.phase5 && state.phase5.active) {
+        blocs = state.phase3Blocs || assignBlocs();
+        // If Phase 3 never actually ran (dev-skip straight to Phase 5),
+        // still let the Best Delegate stage reference whatever blocs
+        // Stage 2's caucus actually ends up using, rather than finding
+        // nothing later and treating every pick as wrong.
+        if (!state.phase3Blocs) state.phase3Blocs = blocs;
+    } else {
+        blocs = assignBlocs();
+        state.phase3Blocs = blocs;
+    }
+    // v41 — Phase 5 forces one single bucket for the whole phase
+    // (state.phase5.topicBucket, picked once in startPhase5Stage1());
+    // every other caller keeps deriving it from Phase 2's winning
+    // motion topic as before.
+    const bucket = (state.phase5 && state.phase5.active)
+        ? state.phase5.topicBucket
+        : (TOPIC_BUCKETS[(p2.priorTopic && p2.priorTopic.long) || ""] || "substance");
     blocs.forEach(bloc => {
         const key = bloc.leader === "power" ? "powerLed" : "carolinaLed";
         bloc.script = CAUCUS_CONVOS[bucket][key];
@@ -3429,6 +5058,11 @@ function startUnmodCaucus(motion) {
         bloc.turnTimer = null;
         bloc.currentBubble = null;
         bloc.overlappingBubble = null;
+        // v42 — reset the player's guess too: if these bloc objects are
+        // being reused from Phase 3 (the branch above), guessIdx would
+        // otherwise still hold Phase 3's actual final guess. Harmless
+        // no-op for fresh blocs, which already start with guessIdx: null.
+        bloc.guessIdx = null;
         // v32 — fast-forward toggle-safe rescaling bookkeeping for whatever
         // dialogue lifecycle step is currently in flight (see
         // scheduleFFAwareStep/rescaleActiveCaucusStep).
@@ -3958,6 +5592,23 @@ function finishPhase3Debrief() {
     const gavelMissed = sp.finalGavelDown === "missed";
     const timingMistake = (warnMissed || warnLate || gavelMissed) ? 1 : 0;
 
+    // Clean up caucus UI — shared by both the Phase 5 chain-through
+    // branch below and the normal Phase 3 debrief.
+    document.querySelectorAll("#committee-room-p2 .delegate-seat").forEach(s => {
+        s.classList.remove("caucus-clickable", "leader-guess");
+        s.removeEventListener("click", onCaucusDelegateClick);
+    });
+
+    // v41 — Phase 5 Stage 2 reuses this exact function but shows no
+    // debrief screen of its own: stash the raw mistake booleans (so the
+    // combined debrief can reproduce these exact clause texts) and
+    // chain straight into Stage 3 (voting procedure) instead.
+    if (state.phase5 && state.phase5.active) {
+        state.phase5.mistakes.unmod = { blocMistakes, warnMissed, warnLate, gavelMissed };
+        startPhase5Stage3();
+        return;
+    }
+
     const stars = Math.max(0, 3 - blocMistakes - timingMistake);
 
     const clauses = [];
@@ -3981,12 +5632,6 @@ function finishPhase3Debrief() {
     renderStarBlock("phase2-stars", stars, summary);
 
     renderPostMotionsScreen("phase3");
-
-    // Clean up caucus UI.
-    document.querySelectorAll("#committee-room-p2 .delegate-seat").forEach(s => {
-        s.classList.remove("caucus-clickable", "leader-guess");
-        s.removeEventListener("click", onCaucusDelegateClick);
-    });
 
     showScreen("post-motions-screen");
 }
@@ -4012,11 +5657,23 @@ function renderPostMotionsScreen(phase) {
         // Phase 4 Stage 1 instead.
         fresh.textContent = "Proceed to Voting Procedure →";
         fresh.addEventListener("click", startPhase4);
-    } else if (phase === "phase4stage2") {
-        // v33 — genuine dead end for this pass (Stage 3: amendments +
-        // vote, and paper 2, not yet built). Disabled, no handler.
-        fresh.textContent = "Stage 3 (amendments + vote) not yet built.";
-        fresh.disabled = true;
+    } else if (phase === "phase4") {
+        // v43 — Phase 4's debrief used to be the true end of the game
+        // (Phase 5 was dev-panel-only). Now it hands off into Phase 5,
+        // "Timed Crisis," exactly like "phase2"/"phase3" hand off into
+        // the next phase — this is the only place a real playthrough
+        // ever reaches state.phase5.active = true. finishPhase4() never
+        // calls renderPostMotionsScreen("phase4") when a Phase 5 run is
+        // already in progress (its own early-return branch goes to
+        // startPhase5BestDelegate() instead), so this case is only ever
+        // hit once per session.
+        fresh.textContent = "Proceed to Timed Crisis →";
+        fresh.addEventListener("click", startPhase5Stage1);
+    } else if (phase === "phase5") {
+        // v41 — true end of the game: Phase 5 is the last phase and no
+        // Phase 6 exists.
+        fresh.textContent = "Adjourn & Restart";
+        fresh.addEventListener("click", () => location.reload());
     } else {
         // Fallback for any future terminal phase.
         fresh.textContent = "Adjourn & Restart";
@@ -4163,6 +5820,17 @@ function devSkipTo(phase) {
         startPhase4();
         return;
     }
+    if (phase === 5) {
+        // v41 — unlike Phases 3/4's dev-skips, Stage 1 itself needs no
+        // faked bloc/caucus data (Stage 2's own startUnmodCaucus()
+        // generates fresh blocs when IT runs, same as normal play);
+        // startPhase5Stage1() already degrades gracefully to "no prior
+        // bucket to exclude" when state.p2 is empty like this.
+        devAutoCompletePhase1();
+        state.p2 = {};
+        startPhase5Stage1();
+        return;
+    }
 }
 
 (function initDevPanel() {
@@ -4188,8 +5856,19 @@ function devSkipTo(phase) {
     const btn = document.getElementById("key-toggle-btn");
     const popup = document.getElementById("key-popup");
     if (!btn || !popup) return;
+    // v40 \u2014 two static #key-rows blocks live side by side in #key-popup;
+    // only one is ever shown, picked fresh each time the popup opens so
+    // it always matches whichever phase is currently active. Phase 2/3's
+    // block (#key-rows-p23) and its content are completely untouched.
+    const rowsP23 = document.getElementById("key-rows-p23");
+    const rowsP4 = document.getElementById("key-rows-p4");
 
     function openKey() {
+        if (rowsP23 && rowsP4) {
+            const isPhase4 = !!(state.p2 && state.p2.votingMode);
+            rowsP23.classList.toggle("hidden", isPhase4);
+            rowsP4.classList.toggle("hidden", !isPhase4);
+        }
         popup.classList.remove("hidden");
         btn.classList.add("active");
         btn.setAttribute("aria-expanded", "true");

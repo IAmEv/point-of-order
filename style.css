@@ -1,6 +1,40 @@
 /* ========================================================
    POINT OF ORDER — A UNCMUNC Chair Simulator
-   style.css — v24
+   style.css — v27
+   v27: Phase 5 debrief heading style (game.js v41, index.html v15).
+        - New .mistake-summary .mistake-heading: small caps, Carolina
+          Blue Dark, labels the three per-stage groups (Moderated
+          Caucus / Unmoderated Caucus / Voting Procedure) inside Phase
+          5's single combined debrief. No other change to
+          .mistake-summary — Phase 1/2/3/4's plain (headingless)
+          debriefs are unaffected.
+   v26: Phase 4 Disruptiveness Key styling (game.js v40, index.html v14).
+        - New .key-swatch.voting (gold, var(--gold)) for the key's new
+          Voting Procedure tier — Phase 4's key only.
+        - New .voting-row .voting-explain / .voting-rule: same compact
+          sub-rule format .mod-row .mod-explain/.mod-example already
+          use (identical property values), as a separate parallel pair
+          of classes so Phase 2/3's key styling is untouched. Carries 3
+          stacked rule lines (flex column) instead of 1.
+   v25: Bugfix — trailing punctuation (usually a lone ".") could wrap
+        onto its own line at the end of a paragraph in the game's most
+        text-dense, narrowest, center-aligned containers (game.js
+        unchanged from v39).
+        - Root cause: .speech-bubble (240px max-width), .chair-prompt-
+          btn (720px max-width, center-aligned), .dais-status, and
+          .flavor-text all wrap long sentences with plain
+          white-space: normal / word-wrap: break-word and no orphan
+          control, so a sentence whose last "word" (often just a
+          trailing period) didn't fit on the current line dropped to a
+          line of its own — most visible in the narrow, centered
+          .speech-bubble/.chair-prompt-btn text.
+        - Fix: added text-wrap: pretty to all four (plus .dais-status,
+          which had no explicit wrap rule before). Purely additive and
+          backwards-compatible: unsupported browsers simply ignore the
+          declaration and wrap exactly as before; supporting ones
+          (recent Chrome/Edge/Firefox) rebalance line breaks to avoid
+          leaving a short orphan (a lone word or trailing punctuation)
+          on the paragraph's last line. No JS or markup changes needed.
    v24: Phase 4 Stage 2 speakers-panel styling (game.js v33).
         - New .speakers-list li.speakers-subheader: labels "For:"/
           "Against:" groups inside the existing #speakers-list
@@ -213,6 +247,7 @@ html, body {
     max-width: 34rem;
     margin: 0 auto 2rem;
     line-height: 1.7;
+    text-wrap: pretty;
 }
 
 /* ---------- BUTTONS ---------- */
@@ -537,6 +572,7 @@ html, body {
     box-shadow: 0 4px 10px rgba(0,0,0,0.18);
     white-space: normal;
     word-wrap: break-word;
+    text-wrap: pretty;
     max-width: 240px;
     width: max-content;
     min-width: 60px;
@@ -782,6 +818,20 @@ html, body {
 .mistake-summary div {
     display: block;
 }
+/* v41 — Phase 5's combined debrief groups clauses under three
+   per-stage headings within the same .mistake-summary block. */
+.mistake-summary .mistake-heading {
+    font-family: 'Playfair Display', serif;
+    font-weight: 700;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--carolina-blue-dark);
+    margin-top: 0.5rem;
+}
+.mistake-summary .mistake-heading:first-child {
+    margin-top: 0;
+}
 
 /* ---------- PHASE 2: MOTIONS ---------- */
 .phase2-body {
@@ -968,6 +1018,7 @@ html, body {
     max-width: 720px;
     white-space: normal;
     word-wrap: break-word;
+    text-wrap: pretty;
 }
 .chair-prompt-btn:hover {
     transform: translateY(-1px);
@@ -1003,6 +1054,7 @@ html, body {
     letter-spacing: 0.05em;
     text-align: center;
     line-height: 1.4;
+    text-wrap: pretty;
     padding: 0.4rem 0.8rem;
 }
 .dais-status .tally {
@@ -1207,6 +1259,7 @@ html, body {
 .key-swatch.rr      { background: #f0a04b; border-color: white; }
 .key-swatch.mod     { background: var(--carolina-blue); border-color: white; }
 .key-swatch.spklist { background: transparent; border-color: white; }
+.key-swatch.voting  { background: var(--gold); border-color: white; } /* v40 — Phase 4 key only */
 .key-label { font-weight: 600; flex-shrink: 0; color: white; }
 .key-hint {
     margin-left: auto;
@@ -1224,6 +1277,26 @@ html, body {
     font-size: 0.7rem;
     color: rgba(255,255,255,0.85);
     letter-spacing: 0.02em;
+}
+/* v40 — Phase 4 key's Voting Procedure tier: same compact sub-rule
+   format .mod-row .mod-explain/.mod-example use, just carrying 3
+   stacked rule lines instead of 1 single-line example. Parallel,
+   Phase-4-only classes; .mod-row/.mod-explain/.mod-example (Phase 2/3)
+   are untouched. */
+.voting-row .voting-explain {
+    flex-basis: 100%;
+    margin-left: 1.3rem;
+    margin-top: 0.15rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+.voting-rule {
+    font-family: 'Special Elite', monospace;
+    font-size: 0.7rem;
+    color: rgba(255,255,255,0.85);
+    letter-spacing: 0.02em;
+    line-height: 1.35;
 }
 .key-footer {
     display: flex;

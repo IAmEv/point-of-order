@@ -2,7 +2,21 @@
 <!--
     ============================================================
     POINT OF ORDER — A UNCMUNC Chair Simulator
-    index.html — v13
+    index.html — v15
+    v15: Phase 5, "Timed Crisis" (game.js v41). Dev-panel button
+         data-dev-phase="5" enabled and relabeled "5 · Timed Crisis"
+         (was disabled "5 · Debrief" — that old placeholder text
+         referred to a different, still-unbuilt global debrief, not
+         this phase). No other markup changes; #motions-screen and
+         #post-motions-screen are reused as-is for all 3 of Phase 5's
+         stages, exactly like every other phase.
+    v14: Phase 4 Disruptiveness Key (game.js v40). #key-popup now holds
+         two static .key-rows blocks instead of one: #key-rows-p23
+         (Phase 2/3's key, content completely unchanged) and new
+         #key-rows-p4 (Voting Procedure tier + Unmod/RR/Mod/Speaker's
+         List in their existing order, no Adjourn/Suspend row).
+         initDisruptivenessKey() in game.js picks which one is visible
+         each time the popup opens, based on state.p2.votingMode.
     v13: Phase 4 Stage 1 (game.js v30) — enabled the dev-panel
          "4 · Voting" button (was disabled/"Not built yet").
          No other markup changes; #post-motions-screen and
@@ -76,7 +90,7 @@
                     <button class="dev-btn" data-dev-phase="2">2 · Moderated Caucus</button>
                     <button class="dev-btn" data-dev-phase="3">3 · Unmod</button>
                     <button class="dev-btn" data-dev-phase="4">4 · Voting</button>
-                    <button class="dev-btn" data-dev-phase="5" disabled title="Not built yet">5 · Debrief</button>
+                    <button class="dev-btn" data-dev-phase="5">5 · Timed Crisis</button>
                 </div>
             </aside>
         </section>
@@ -172,10 +186,52 @@
                             <span class="key-arrow-up">&#9650; more</span>
                         </div>
 
-                        <div class="key-rows">
+                        <!-- v40 — Phase 2/3's key content, id'd so JS can toggle it
+                             against #key-rows-p4 below; content unchanged. -->
+                        <div class="key-rows" id="key-rows-p23">
                             <div class="key-row">
                                 <span class="key-swatch adjourn"></span>
                                 <span class="key-label">Adjourn / Suspend</span>
+                            </div>
+                            <div class="key-row">
+                                <span class="key-swatch unmod"></span>
+                                <span class="key-label">Unmod</span>
+                                <span class="key-hint">longer = more &#8593;</span>
+                            </div>
+                            <div class="key-row">
+                                <span class="key-swatch rr"></span>
+                                <span class="key-label">Round Robin</span>
+                                <span class="key-hint">longer = more &#8593;</span>
+                            </div>
+                            <div class="key-row mod-row">
+                                <span class="key-swatch mod"></span>
+                                <span class="key-label">Mod</span>
+                                <span class="key-hint">more speakers = more &#8593;</span>
+                                <div class="mod-explain">
+                                    <span class="mod-example">e.g. 3 min, 30 sec &#8594; 6 spkrs</span>
+                                </div>
+                            </div>
+                            <div class="key-row">
+                                <span class="key-swatch spklist"></span>
+                                <span class="key-label">Speaker's List</span>
+                            </div>
+                        </div>
+
+                        <!-- v40 — Phase 4 Stage 1's own key content: no Adjourn/
+                             Suspend tier (never raised in Phase 4), new Voting
+                             Procedure tier on top, Unmod/RR/Mod/Speaker's List
+                             below it in their existing relative order, unchanged.
+                             Toggled against #key-rows-p23 by initDisruptivenessKey()
+                             based on state.p2.votingMode. -->
+                        <div class="key-rows hidden" id="key-rows-p4">
+                            <div class="key-row voting-row">
+                                <span class="key-swatch voting"></span>
+                                <span class="key-label">Voting Procedure</span>
+                                <div class="voting-explain">
+                                    <span class="voting-rule">Motions with an amendment period outrank motions without one.</span>
+                                    <span class="voting-rule">Among motions with the same amendment status, longer speaking time outranks shorter.</span>
+                                    <span class="voting-rule">Among motions with the same amendment status and speaking time, reverse order outranks order submitted.</span>
+                                </div>
                             </div>
                             <div class="key-row">
                                 <span class="key-swatch unmod"></span>
