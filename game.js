@@ -1,5 +1,44 @@
 /* ==========================================================
    POINT OF ORDER — Game Logic
+   v49: Disruptiveness Key auto-opens/closes with the "check the Key"
+        tutorial steps (index.html/style.css unchanged).
+        - initDisruptivenessKey()'s openKey()/closeKey() pulled out to
+          top-level openDisruptivenessKey()/closeDisruptivenessKey() so
+          they're callable from outside that IIFE's closure; the toggle
+          button, outside-click, and Escape handlers inside it now just
+          call these same two functions, unchanged behavior.
+        - showTutorial() now returns true if the step actually fired
+          (shown or queued) and false on every no-op, so a call site can
+          pair a one-time side effect with a step without re-deriving
+          its own tutorialMode/tutorialSeen/phase5 guard.
+        - The "ready_to_vote" button's click handler (Phase 2's "That is
+          all the motions...", shared with Phase 4) now calls
+          openDisruptivenessKey() whenever showTutorial() actually fires
+          p2_disruptiveness or p4_intro — both tell the player to open
+          the Key, so now it's already open when they read that.
+        - selectMotionForVote() calls closeDisruptivenessKey() the
+          instant a motion is actually put to a vote (Phase 2/3/4, same
+          function all three share) — the other half, regardless of
+          whether it was opened automatically or by hand.
+        - Bugfix found while wiring the above: openDisruptivenessKey()
+          called from a button OTHER than the Key's own toggle (the
+          "ready_to_vote" button) had the exact same same-tick self-
+          dismiss problem v46 fixed for tutorial popups — that same
+          click bubbles to the Key's own outside-click-closes-it
+          listener, which closed it the instant it opened. New
+          state._keyJustOpened, same suppress-the-opening-click pattern
+          as _tutorialJustShown, fixes it.
+   v48: p1_intro repositioned (index.html/style.css unchanged).
+        Was centered; now anchored to the dais bar ("— THE DAIS · YOU
+        ARE HERE —", bottom of the room) with placement: "top" and a
+        new gap: 0 on the step, so the popup's bottom edge sits flush
+        against the dais bar's top edge instead of floating free.
+        - positionTutorialPopup() gained an optional 4th param, gap
+          (default 14, the same value every other step already used),
+          read from job.step.gap — purely additive; every other step
+          omits it and renders exactly as before. Viewport-edge
+          clamping (now named edgeMargin) is unchanged and separate
+          from this per-step gap.
    v47: Several small, surgical fixes (style.css v30→v31, index.html
         v18→v19). No redesign of the tutorial engine, the Gavel-
         selection flow, or the global debrief beyond what's listed here.
@@ -1597,8 +1636,11 @@ const TUTORIAL_STEPS = [
     {
         id: "p1_intro",
         text: "Let's take roll. In committee, you'll go down the list alphabetically and click each delegate to mark them Present, Present and Voting, or Absent, based on how they respond. Get everyone right before you move on.",
-        targetSelector: null,
-        placement: "center",
+        // v48 — anchored to the dais bar, flush against it (gap: 0),
+        // instead of centered over the room.
+        targetSelector: "#committee-room .room-dais",
+        placement: "top",
+        gap: 0,
     },
     {
         id: "p1_correction",
@@ -1750,6 +1792,10 @@ const state = {
     _tutorialHighlighted: [],
     // v46 — see renderTutorialStep()'s self-dismiss bugfix.
     _tutorialJustShown: false,
+    // v49 — same self-dismiss guard, for the Disruptiveness Key popup
+    // when it's auto-opened from a button other than its own toggle.
+    // See openDisruptivenessKey().
+    _keyJustOpened: false,
 };
 
 // ---------- UTILITIES ----------
@@ -1783,12 +1829,16 @@ function shortName(country) {
 // showTutorial(id) is the one line every trigger point below adds.
 // targetSelector is optional and overrides the step's own config
 // selector for triggers whose target is only known at call time (a
-// specific seat, two specific sponsor seats).
+// specific seat, two specific sponsor seats). Returns true if the step
+// actually fired (shown or queued) this call, false on every no-op —
+// callers that pair a step with a side effect (e.g. auto-opening the
+// Disruptiveness Key alongside p2_disruptiveness/p4_intro) use this
+// instead of re-checking tutorialMode/tutorialSeen/phase5 themselves.
 function showTutorial(id, targetSelector) {
-    if (!state.tutorialMode) return;
-    if (state.tutorialSeen.has(id)) return;
+    if (!state.tutorialMode) return false;
+    if (state.tutorialSeen.has(id)) return false;
     const step = TUTORIAL_STEPS.find(s => s.id === id);
-    if (!step) return;
+    if (!step) return false;
     // Phase 5 ("Timed Crisis") reuses almost every function these trigger
     // points live in, verbatim, and gets none of Phases 1-4's tutorial
     // content (it's a speed-run of mechanics already taught) — enforcing
@@ -1796,7 +1846,7 @@ function showTutorial(id, targetSelector) {
     // check. v47 — except the small number of steps written specifically
     // for Phase 5 itself (step.allowInPhase5: true), which still need
     // the usual tutorialMode/tutorialSeen gating above.
-    if (state.phase5 && state.phase5.active && !step.allowInPhase5) return;
+    if (state.phase5 && state.phase5.active && !step.allowInPhase5) return false;
     state.tutorialSeen.add(id);
 
     const job = { step, targetSelector: targetSelector || step.targetSelector };
@@ -1806,9 +1856,10 @@ function showTutorial(id, targetSelector) {
         // the second rather than silently overwriting the first before
         // it's ever been seen.
         state._tutorialQueue.push(job);
-        return;
+        return true;
     }
     renderTutorialStep(job);
+    return true;
 }
 
 function renderTutorialStep(job) {
@@ -1857,11 +1908,15 @@ function renderTutorialStep(job) {
     // follow-up click, so genuine outside clicks still dismiss normally.
     state._tutorialJustShown = true;
     setTimeout(() => { state._tutorialJustShown = false; }, 0);
-    positionTutorialPopup(popup, rect, job.step.placement);
+    positionTutorialPopup(popup, rect, job.step.placement, job.step.gap);
 }
 
-function positionTutorialPopup(popup, rect, placement) {
-    const margin = 14;
+// v48 — gap is the distance between the popup and its target along the
+// placement direction (defaults to the same 14px used for viewport edge
+// clamping); a step can override it, e.g. gap: 0 to sit flush against
+// the target instead of leaving the usual breathing room.
+function positionTutorialPopup(popup, rect, placement, gap = 14) {
+    const edgeMargin = 14;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
 
@@ -1884,18 +1939,18 @@ function positionTutorialPopup(popup, rect, placement) {
         switch (placement) {
             case "top":
                 left = cx - pw / 2;
-                top = rect.top - ph - margin;
+                top = rect.top - ph - gap;
                 break;
             case "bottom":
                 left = cx - pw / 2;
-                top = rect.bottom + margin;
+                top = rect.bottom + gap;
                 break;
             case "left":
-                left = rect.left - pw - margin;
+                left = rect.left - pw - gap;
                 top = cy - ph / 2;
                 break;
             case "right":
-                left = rect.right + margin;
+                left = rect.right + gap;
                 top = cy - ph / 2;
                 break;
             default:
@@ -1904,8 +1959,8 @@ function positionTutorialPopup(popup, rect, placement) {
         }
     }
 
-    left = Math.max(margin, Math.min(left, vw - pw - margin));
-    top = Math.max(margin, Math.min(top, vh - ph - margin));
+    left = Math.max(edgeMargin, Math.min(left, vw - pw - edgeMargin));
+    top = Math.max(edgeMargin, Math.min(top, vh - ph - edgeMargin));
     popup.style.left = `${left}px`;
     popup.style.top = `${top}px`;
     popup.style.visibility = "visible";
@@ -2576,8 +2631,16 @@ function renderMotionsDais() {
                 // on-the-agenda moment to here: the agenda is now in its
                 // final voting state, matching what these two steps
                 // actually describe ("vote on the most disruptive...").
-                if (p2.votingMode) showTutorial("p4_intro", "#key-toggle-btn");
-                else if (!p2.unmodMode) showTutorial("p2_disruptiveness", ".agenda-panel");
+                // v49 — the Key auto-opens alongside whichever of these
+                // two steps actually fires (shown is a one-time thing;
+                // selectMotionForVote() auto-closes it again once the
+                // player acts), so the player isn't told to "check the
+                // Key" while it's sitting closed.
+                if (p2.votingMode) {
+                    if (showTutorial("p4_intro", "#key-toggle-btn")) openDisruptivenessKey();
+                } else if (!p2.unmodMode) {
+                    if (showTutorial("p2_disruptiveness", ".agenda-panel")) openDisruptivenessKey();
+                }
             });
             bar.appendChild(btn);
             break;
@@ -3249,6 +3312,11 @@ function selectMotionForVote(motionIdx) {
     if (p2.stage !== "selecting_vote") return;
     const motion = p2.motionsCollected[motionIdx];
     if (motion.status) return;
+    // v49 — the Key auto-opens alongside the p2_disruptiveness/p4_intro
+    // tutorial steps (the "ready_to_vote" button handler above); closing
+    // it here, the instant a motion is actually put to a vote, is the
+    // other half of that. Harmless no-op if it was never open.
+    closeDisruptivenessKey();
     const correctIdx = mostDisruptiveUnresolvedIdx();
     p2.orderPicks.push({
         pickedIdx: motionIdx,
@@ -6510,7 +6578,11 @@ function devSkipTo(phase) {
 /* ============================================================
    DISRUPTIVENESS KEY — toggle behavior
    ============================================================ */
-(function initDisruptivenessKey() {
+// v49 \u2014 pulled out of initDisruptivenessKey()'s closure (top-level now,
+// not just click/Escape-handler-local) so showTutorial()'s p2_disruptiveness/
+// p4_intro call site and selectMotionForVote() can also open/close the
+// Key, not just the toggle button itself.
+function openDisruptivenessKey() {
     const btn = document.getElementById("key-toggle-btn");
     const popup = document.getElementById("key-popup");
     if (!btn || !popup) return;
@@ -6520,41 +6592,59 @@ function devSkipTo(phase) {
     // block (#key-rows-p23) and its content are completely untouched.
     const rowsP23 = document.getElementById("key-rows-p23");
     const rowsP4 = document.getElementById("key-rows-p4");
+    if (rowsP23 && rowsP4) {
+        const isPhase4 = !!(state.p2 && state.p2.votingMode);
+        rowsP23.classList.toggle("hidden", isPhase4);
+        rowsP4.classList.toggle("hidden", !isPhase4);
+    }
+    popup.classList.remove("hidden");
+    btn.classList.add("active");
+    btn.setAttribute("aria-expanded", "true");
+    btn.innerHTML = "Disruptiveness Key \u25B4";
+    // v49 \u2014 openDisruptivenessKey() is now also called from OTHER
+    // buttons' click handlers (the "ready_to_vote" one, auto-opening
+    // alongside p2_disruptiveness/p4_intro), not just the toggle button
+    // itself (which stops its own click from propagating). That same
+    // click then bubbles to the outside-click listener below, which
+    // would otherwise close the Key the instant it opened. Same
+    // suppress-the-opening-click pattern as the tutorial popup's
+    // _tutorialJustShown.
+    state._keyJustOpened = true;
+    setTimeout(() => { state._keyJustOpened = false; }, 0);
+}
+function closeDisruptivenessKey() {
+    const btn = document.getElementById("key-toggle-btn");
+    const popup = document.getElementById("key-popup");
+    if (!btn || !popup) return;
+    popup.classList.add("hidden");
+    btn.classList.remove("active");
+    btn.setAttribute("aria-expanded", "false");
+    btn.innerHTML = "Disruptiveness Key \u25BE";
+}
 
-    function openKey() {
-        if (rowsP23 && rowsP4) {
-            const isPhase4 = !!(state.p2 && state.p2.votingMode);
-            rowsP23.classList.toggle("hidden", isPhase4);
-            rowsP4.classList.toggle("hidden", !isPhase4);
-        }
-        popup.classList.remove("hidden");
-        btn.classList.add("active");
-        btn.setAttribute("aria-expanded", "true");
-        btn.innerHTML = "Disruptiveness Key \u25B4";
-    }
-    function closeKey() {
-        popup.classList.add("hidden");
-        btn.classList.remove("active");
-        btn.setAttribute("aria-expanded", "false");
-        btn.innerHTML = "Disruptiveness Key \u25BE";
-    }
+(function initDisruptivenessKey() {
+    const btn = document.getElementById("key-toggle-btn");
+    const popup = document.getElementById("key-popup");
+    if (!btn || !popup) return;
+
     function toggleKey(e) {
         e.stopPropagation();
-        if (popup.classList.contains("hidden")) openKey();
-        else closeKey();
+        if (popup.classList.contains("hidden")) openDisruptivenessKey();
+        else closeDisruptivenessKey();
     }
 
     btn.addEventListener("click", toggleKey);
 
     document.addEventListener("click", (e) => {
         if (popup.classList.contains("hidden")) return;
+        if (state._keyJustOpened) return;
         if (popup.contains(e.target) || btn.contains(e.target)) return;
-        closeKey();
+        closeDisruptivenessKey();
     });
 
     document.addEventListener("keydown", (e) => {
         if (e.key === "Escape" && !popup.classList.contains("hidden")) {
-            closeKey();
+            closeDisruptivenessKey();
         }
     });
 })();
