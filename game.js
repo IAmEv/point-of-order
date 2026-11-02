@@ -1,5 +1,129 @@
 /* ==========================================================
    POINT OF ORDER — Game Logic
+   v46: Tutorial popup bugfix pass (style.css v29→v30, index.html v17→v18).
+        No change to game logic, scoring, or the asset-swap architecture.
+        - Root cause (not what the original bug report guessed): every
+          "broken" step fires showTutorial() synchronously from inside a
+          click handler (the exact click that raises a placard, accepts a
+          motion, etc.). That same click then bubbles up to document,
+          where the existing "click outside closes it" listener was
+          dismissing the popup that same tick, before it was ever
+          painted. The 3 steps that already "worked" (p1_correction,
+          p2_speaker_select) only did because their showTutorial() call
+          sits behind an await/setTimeout, outside the triggering click's
+          own dispatch — not because their call sites were better placed.
+          A full audit of all 13 call sites found every targetSelector
+          already correctly placed after the DOM render that creates it;
+          none needed moving.
+        - Fix: new state._tutorialJustShown, set by renderTutorialStep()
+          the instant it shows a popup and cleared on the very next tick
+          (setTimeout(fn, 0)). The outside-click listener
+          (initTutorialOverlay()) now skips dismissal while it's true —
+          suppressing exactly the one triggering click, never a genuine
+          later one. This also fixes Phase 3's p3_intro/p3_timer
+          sequencing (bug report's Bug 3): once the self-dismiss bug no
+          longer fires on the triggering click, the existing same-tick
+          queue in showTutorial() (unchanged) already defers p3_timer
+          until the player's next real click dismisses p3_intro — no new
+          engine mechanism needed, and p3_timer still fires immediately
+          on its own trigger if p3_intro was already seen.
+        - renderTutorialStep() also now console.warn()s and falls back to
+          a centered popup if a configured targetSelector ever matches
+          nothing at trigger time (previously silent; this path wasn't
+          actually the cause of any of the 10 broken steps, since all of
+          them checked out as reachable with valid, already-rendered
+          targets — see Bug 2 below — but it's cheap insurance against a
+          future one).
+        - Bug 2 findings: p4_intro/p4_papers/p4_amendment's showTutorial()
+          calls do exist in code reachable during Phase 4 (handleAcceptMotion()'s
+          p2.votingMode branch, enterStage2Paper(), handleAmendmentDeclaration()
+          — all three run for Phase 4 same as Phase 2/3), and "p4_intro"/
+          "p2_disruptiveness" are distinct ids in TUTORIAL_STEPS, each with
+          its own independent tutorialSeen entry. Neither hypothesis in
+          Bug 2 held; both suffered from the same self-dismiss bug as
+          everything else, fixed above.
+        - Copy: "Associate Chair" -> "Assistant Chair" (TUTORIAL_STEPS'
+          p2_intro text; index.html's agenda-panel heading).
+   v45: Phase 5 Stage 4 reframed as "the Gavel" (copy only — no change to
+        confirmBestDelegate()/bestDelegateCorrectIdx()/the data model);
+        new state.phaseStars tracking each phase's own real star result;
+        a new global, whole-session debrief shown after Phase 5's own
+        (style.css v28→v29, index.html v16→v17).
+        - renderMotionsDais()'s "phase5_best_delegate" case: the
+          bestDelegateIdx-null prompt now reads "Before you adjourn, the
+          committee awards the Gavel, its highest honor, to the Best
+          Delegate. Who do you recognize?" and the confirm button now
+          reads "Award the Gavel" (was "Confirm"). The other branch's
+          "[country] selected for Best Delegate." status, the debrief's
+          "Misidentified Best Delegate." clause, and the "Overall"
+          heading are all unchanged.
+        - New state.phaseStars = { p1..p5: null }, set at the exact
+          point each phase's own real debrief computes its stars —
+          computeAndShowScore() (Phase 1), and the normal (non-Phase-5)
+          branch only of finishPhase2()/finishPhase3Debrief()/
+          finishPhase4()/showPhase5CombinedDebrief(). A phase reached
+          only via a dev-panel skip leaves its entry null forever, by
+          design — see showGlobalDebrief() below.
+        - New #global-debrief-screen (index.html) + showGlobalDebrief()/
+          buildGlobalDebriefRow()/GLOBAL_DEBRIEF_PHASES: five rows
+          reading straight from state.phaseStars (a null entry shows
+          "Not Played"), a perfect-session check (`every(s => s === 3)`,
+          so a null entry fails it same as any other non-3 value), and
+          either the Chair Award link+banner or a "replay until perfect"
+          message. renderPostMotionsScreen("phase5")'s button now reads
+          "Next →" and calls showGlobalDebrief() instead of reloading
+          the page directly; the new screen's own "Adjourn & Restart"
+          button is the actual terminal action now.
+        - Title screen flavor text swapped (index.html only, no JS
+          change): "Get 3 stars in every phase of committee to win!"
+   v44: Interactive, skippable tutorial overlay for Phases 1-4 (style.css
+        v27→v28, index.html v15→v16). Additive only: no game logic,
+        scoring, or the DELEGATE_ART/GAVEL_ART/GAVEL_SOUND asset-swap
+        architecture changed. Phase 5 ("Timed Crisis") gets no tutorial
+        content at all, since it's a dev-only speed-run of mechanics
+        the tutorial already covered in Phases 1-4.
+        - New TUTORIAL_STEPS config array (13 steps, text authored in
+          DESIGN.md's spec): { id, text, targetSelector, placement }.
+          targetSelector is resolved fresh at trigger time via
+          querySelectorAll, since most targets (a raised placard, a
+          specific seat, whichever button the dais currently shows)
+          don't exist when this file loads; a few steps pass a
+          call-time selector override instead (the first roll-call
+          seat, a paper's two sponsor seats) since those depend on that
+          session's committee.
+        - New state.tutorialMode (bool, default true) and
+          state.tutorialSeen (session-scoped Set, default empty — reset
+          to defaults on page load/restart, same as every other piece
+          of session state).
+        - New showTutorial(id, targetSelector?): no-ops unless
+          tutorialMode is on, the step hasn't been seen this session,
+          and state.phase5 isn't active. That Phase 5 check lives here,
+          once, instead of at each of the 13 call sites below — every
+          one of those sites is a function Phase 5 also reuses
+          verbatim, so checking there would mean repeating the same
+          guard 13 times. Highlights the resolved target(s) with
+          .tutorial-highlight, positions #tutorial-popup near them (or
+          centered if there's no target, or placement is "center"),
+          and queues same-tick duplicate triggers (e.g. Phase 3's caucus
+          huddles finishing and its timer starting both fire from
+          startUnmodCaucus() in one call) instead of letting a later
+          one silently overwrite an earlier one nobody's seen yet.
+          dismissTutorial() (wired to the new "Got it" button and to
+          any click outside the popup — non-blocking, the real UI
+          underneath is always clickable without dismissing first)
+          clears the highlight and shows the next queued step, if any.
+        - One showTutorial(...) line added at each of the 13 trigger
+          points from DESIGN.md's spec, inside startRollCall()/
+          nextRollCall() (Phase 1), startPhase2()/handleAcceptMotion()/
+          renderMotionsDais()'s dilatory branch/enterRound1()/
+          beginSpeech()/enterRound2() (Phase 2), startUnmodCaucus()
+          (Phase 3), and handleAcceptMotion()/enterStage2Paper()/
+          handleAmendmentDeclaration() (Phase 4). No other line in any
+          of those functions changed.
+        - New briefing-screen checkbox, "Show tutorial tips" (checked
+          by default), wired directly to state.tutorialMode with no
+          persistence, matching DESIGN.md §11's existing "Persistence:
+          None." No dev-panel changes.
    v43: Phase 5, "Timed Crisis," is now reachable in regular play (style.css
         unchanged from v27, index.html unchanged from v15). Phase 4's
         debrief button ("phase4" case in renderPostMotionsScreen()) used
@@ -1394,6 +1518,95 @@ const BLOC_LAYOUT = {
     },
 };
 
+// ---------- TUTORIAL STEPS (v44) ----------
+// Content for the Phase 1-4 tutorial overlay (see showTutorial() below).
+// Phase 5 is a dev-only speed-run of mechanics already taught, so it
+// never triggers any of these (enforced inside showTutorial() itself,
+// not at each call site). targetSelector is resolved fresh at trigger
+// time via document.querySelectorAll, since most targets (a raised
+// placard, a specific seat, whichever button the dais currently shows)
+// don't exist yet when this file loads.
+const TUTORIAL_STEPS = [
+    {
+        id: "p1_intro",
+        text: "Let's take roll. In committee, you'll go down the list alphabetically and click each delegate to mark them Present, Present and Voting, or Absent, based on how they respond. Get everyone right before you move on.",
+        targetSelector: null,
+        placement: "bottom",
+    },
+    {
+        id: "p1_correction",
+        text: "Gold boxes are things you, as Chair, say out loud during committee. Delegates sometimes use incorrect parliamentary procedure, and it's your job to politely correct them. Miss one of these and it'll cost you.",
+        targetSelector: "#correct-btn",
+        placement: "top",
+    },
+    {
+        id: "p2_intro",
+        text: "Those raised placards are delegates with motions. Click one to hear it out, and the Assistant Chair will add it to the agenda. Once you've got 3 on the floor, you'll call votes on them.",
+        targetSelector: ".chair-prompt-btn",
+        placement: "top",
+    },
+    {
+        id: "p2_disruptiveness",
+        text: "Always put the most disruptive unresolved motion to a vote first. Not sure which that is? Open the Key. Calling votes out of order will cost you, so when in doubt, check it. Disruptiveness is a fixed ranking, so you can always work it out.",
+        targetSelector: ".agenda-panel",
+        placement: "left",
+    },
+    {
+        id: "p2_dilatory",
+        text: "Some motions are out of order and shouldn't be entertained at all. Rule these dilatory instead of putting them to the floor. Getting this wrong, or missing it, costs a star. When in doubt, the Chair is the boss and can rule any nonsense dilatory.",
+        targetSelector: ".chair-prompt-btn.dilatory",
+        placement: "top",
+    },
+    {
+        id: "p2_speaker_select",
+        text: "Now build the first half of the speakers list for the motion that just passed. Click delegates with raised placards to add them.",
+        targetSelector: ".delegate-seat.raised",
+        placement: "bottom",
+    },
+    {
+        id: "p2_speech_timer",
+        text: "Keep an eye on the clock. Give the time warning with one gavel tap at 10 seconds left, then keep hitting the gavel at 0:00 until the delegate finishes speaking. Missing or botching either one costs you. Speeches run on compressed seconds here instead of real seconds just to keep the game moving, but the timer will be accurate at the real conference.",
+        targetSelector: ".speech-dais",
+        placement: "top",
+    },
+    {
+        id: "p2_round2",
+        text: "Second half now. Don't call on someone who already spoke if there's an unused speaker available; that's an avoidable repeat and it'll cost you.",
+        targetSelector: "#speakers-list",
+        placement: "left",
+    },
+    {
+        id: "p3_intro",
+        text: "Hover over a bloc to listen in on their conversation. While you listen, try to spot who's actually leading the bloc, then click that delegate to lock in your guess. You can change your mind anytime before the caucus ends. Typically, the person who leads the most unmods will end up a frontrunner.",
+        targetSelector: "#committee-room-p2",
+        placement: "center",
+    },
+    {
+        id: "p3_timer",
+        text: "Same warning and gavel discipline as before, but it's a one-minute warning this time, not ten seconds. Use the fast-forward button if you'd rather speed things along. The unmod here is squeezed into about a minute of real time no matter how long the motion asked for, but the real conference will have an accurate timer.",
+        targetSelector: ".speech-dais",
+        placement: "top",
+    },
+    {
+        id: "p4_intro",
+        text: "Same motion-and-vote loop as before, but the ranking's different in Voting Procedure: whether a motion has an amendment period beats speaking time, which beats submission order. Voting procedure is the single hardest motion to keep track of, so check the Key. It's a separate scale from the one you used earlier.",
+        targetSelector: "#key-toggle-btn",
+        placement: "left",
+    },
+    {
+        id: "p4_papers",
+        text: "After you, as the Chair, read out the first paper, pick two speakers for and two against. Try not to repeat a speaker between paper one and paper two if someone fresh is still available. In a real committee, these papers are actual delegate-written policy; here the text is pre-written.",
+        targetSelector: "#speakers-panel",
+        placement: "left",
+    },
+    {
+        id: "p4_amendment",
+        text: "Friendly amendments go straight onto the paper. Unfriendly ones need a two-thirds vote of their own first. Nothing for you to decide here, just know what's coming.",
+        targetSelector: null,
+        placement: "bottom",
+    },
+];
+
 // ---------- STATE ----------
 const state = {
     committee: null,
@@ -1424,6 +1637,24 @@ const state = {
     // calling assignBlocs() fresh — this is what Phase 5's Best
     // Delegate stage checks the correct answer against.
     phase3Blocs: null,
+    // v45 — each phase's own real debrief sets its entry the moment it
+    // computes its final stars value (never when a later phase reuses
+    // that same debrief function internally — see finishPhase2()/
+    // finishPhase3Debrief()/finishPhase4()'s Phase 5 early-return
+    // branches). A phase only ever reached via a dev-panel skip leaves
+    // its entry null forever; showGlobalDebrief() reads that as "Not
+    // Played" and it fails the perfect-session check by design.
+    phaseStars: { p1: null, p2: null, p3: null, p4: null, p5: null },
+    // v44 — tutorial overlay (Phases 1-4 only; see showTutorial() below).
+    // tutorialSeen is session-scoped: both reset to their defaults on
+    // page load, which is also what every restart button does.
+    tutorialMode: true,
+    tutorialSeen: new Set(),
+    _tutorialCurrent: null,
+    _tutorialQueue: [],
+    _tutorialHighlighted: [],
+    // v46 — see renderTutorialStep()'s self-dismiss bugfix.
+    _tutorialJustShown: false,
 };
 
 // ---------- UTILITIES ----------
@@ -1447,6 +1678,154 @@ function shortName(country) {
     const map = { "South Africa": "S.Af", "Indonesia": "Idn", "Philippines": "Phil" };
     if (map[country]) return map[country];
     return country.slice(0, 3);
+}
+
+// ---------- TUTORIAL OVERLAY (v44) ----------
+// Additive, non-blocking help system for Phases 1-4. A single reusable
+// #tutorial-popup element (index.html) is positioned over whatever's
+// currently on screen; nothing here touches game state or scoring.
+//
+// showTutorial(id) is the one line every trigger point below adds.
+// targetSelector is optional and overrides the step's own config
+// selector for triggers whose target is only known at call time (a
+// specific seat, two specific sponsor seats).
+function showTutorial(id, targetSelector) {
+    if (!state.tutorialMode) return;
+    if (state.tutorialSeen.has(id)) return;
+    // Phase 5 ("Timed Crisis") reuses every function these trigger
+    // points live in, verbatim, but gets no tutorial content at all —
+    // enforcing that here, once, means no call site below needs its
+    // own Phase 5 check.
+    if (state.phase5 && state.phase5.active) return;
+    const step = TUTORIAL_STEPS.find(s => s.id === id);
+    if (!step) return;
+    state.tutorialSeen.add(id);
+
+    const job = { step, targetSelector: targetSelector || step.targetSelector };
+    if (state._tutorialCurrent) {
+        // Two steps can legitimately trigger in the same tick (e.g. two
+        // things both becoming true the instant a caucus starts); queue
+        // the second rather than silently overwriting the first before
+        // it's ever been seen.
+        state._tutorialQueue.push(job);
+        return;
+    }
+    renderTutorialStep(job);
+}
+
+function renderTutorialStep(job) {
+    const popup = document.getElementById("tutorial-popup");
+    const textEl = document.getElementById("tutorial-text");
+    if (!popup || !textEl) return;
+    state._tutorialCurrent = job;
+    textEl.textContent = job.step.text;
+    clearTutorialHighlight();
+
+    let rect = null;
+    if (job.targetSelector) {
+        const targets = Array.from(document.querySelectorAll(job.targetSelector));
+        if (targets.length) {
+            state._tutorialHighlighted = targets;
+            targets.forEach(el => el.classList.add("tutorial-highlight"));
+            rect = targets.reduce((acc, el) => {
+                const r = el.getBoundingClientRect();
+                if (!acc) return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+                return {
+                    left: Math.min(acc.left, r.left),
+                    top: Math.min(acc.top, r.top),
+                    right: Math.max(acc.right, r.right),
+                    bottom: Math.max(acc.bottom, r.bottom),
+                };
+            }, null);
+        } else {
+            // v46 — defensive fallback: a step with a configured target
+            // whose selector matches nothing at trigger time still shows,
+            // centered, rather than silently doing nothing. Warns so a
+            // future case like this is never invisible.
+            console.warn(`showTutorial("${job.step.id}"): targetSelector "${job.targetSelector}" matched no element; showing centered.`);
+        }
+    }
+
+    popup.hidden = false;
+    // v46 — bugfix: showTutorial() is almost always called synchronously
+    // from inside a click handler (the click that raises a placard, calls
+    // for motions, accepts a motion, etc.). That same click then bubbles
+    // up to document, where the "click outside closes it" listener below
+    // was dismissing the popup THIS SAME TICK, before it was ever
+    // painted — every step that wasn't deferred behind a setTimeout/await
+    // (p1_correction, p2_speaker_select) looked like it silently never
+    // appeared. _tutorialJustShown suppresses exactly that one triggering
+    // click; it's cleared on the next tick, well before any real
+    // follow-up click, so genuine outside clicks still dismiss normally.
+    state._tutorialJustShown = true;
+    setTimeout(() => { state._tutorialJustShown = false; }, 0);
+    positionTutorialPopup(popup, rect, job.step.placement);
+}
+
+function positionTutorialPopup(popup, rect, placement) {
+    const margin = 14;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    // Measure with the popup already in final content/visibility state
+    // but off in a neutral spot, so offsetWidth/Height reflect this
+    // step's actual text length before we place it.
+    popup.style.visibility = "hidden";
+    popup.style.left = "0px";
+    popup.style.top = "0px";
+    const pw = popup.offsetWidth;
+    const ph = popup.offsetHeight;
+
+    let left, top;
+    if (!rect || placement === "center") {
+        left = (vw - pw) / 2;
+        top = (vh - ph) / 2;
+    } else {
+        const cx = rect.left + (rect.right - rect.left) / 2;
+        const cy = rect.top + (rect.bottom - rect.top) / 2;
+        switch (placement) {
+            case "top":
+                left = cx - pw / 2;
+                top = rect.top - ph - margin;
+                break;
+            case "bottom":
+                left = cx - pw / 2;
+                top = rect.bottom + margin;
+                break;
+            case "left":
+                left = rect.left - pw - margin;
+                top = cy - ph / 2;
+                break;
+            case "right":
+                left = rect.right + margin;
+                top = cy - ph / 2;
+                break;
+            default:
+                left = (vw - pw) / 2;
+                top = (vh - ph) / 2;
+        }
+    }
+
+    left = Math.max(margin, Math.min(left, vw - pw - margin));
+    top = Math.max(margin, Math.min(top, vh - ph - margin));
+    popup.style.left = `${left}px`;
+    popup.style.top = `${top}px`;
+    popup.style.visibility = "visible";
+}
+
+function clearTutorialHighlight() {
+    state._tutorialHighlighted.forEach(el => el.classList.remove("tutorial-highlight"));
+    state._tutorialHighlighted = [];
+}
+
+function dismissTutorial() {
+    const popup = document.getElementById("tutorial-popup");
+    if (popup) popup.hidden = true;
+    clearTutorialHighlight();
+    state._tutorialCurrent = null;
+    if (state._tutorialQueue.length) {
+        renderTutorialStep(state._tutorialQueue.shift());
+    }
 }
 
 // ---------- SEAT ASSIGNMENT ----------
@@ -1638,6 +2017,7 @@ async function startRollCall() {
     document.getElementById("roll-total").textContent = state.rollOrder.length;
 
     renderCommitteeRoom("committee-room");
+    showTutorial("p1_intro", `#committee-room .delegate-seat[data-index="${delegateIndexOf(state.rollOrder[0])}"]`);
     await sleep(500);
     nextRollCall();
 }
@@ -1677,6 +2057,7 @@ async function nextRollCall() {
             document.getElementById("action-row").classList.add("hidden");
             document.getElementById("correction-row").classList.remove("hidden");
             playThud();
+            showTutorial("p1_correction");
         }
     }
 
@@ -1798,6 +2179,7 @@ function computeAndShowScore() {
     const missedCorrections = results.filter(r => r.missedCorrection).length;
     const mistakes = wrongActions + missedCorrections;
     const stars = Math.max(0, 3 - mistakes);
+    state.phaseStars.p1 = stars;
 
     const clauses = [];
     if (wrongActions > 0)      clauses.push(`${wrongActions} incorrect ruling${wrongActions > 1 ? "s" : ""}.`);
@@ -1976,6 +2358,7 @@ function startPhase2() {
     renderAgenda();
     renderMotionsDais();
     updateMotionsInstructions("Ask the floor for motions.");
+    showTutorial("p2_intro");
 }
 
 function updateMotionsInstructions(text) {
@@ -2039,6 +2422,7 @@ function renderMotionsDais() {
                 );
                 btn.addEventListener("click", handleDilatory);
                 bar.appendChild(btn);
+                showTutorial("p2_dilatory", ".chair-prompt-btn.dilatory");
             } else if (motion.type === "mod" && motion.needsCorrection) {
                 const btn = daisButton(
                     `Mods with 45 second speaking times must have multiples of 3 for the minutes.`,
@@ -2390,8 +2774,10 @@ function renderMotionsDais() {
         // the combined debrief.
         case "phase5_best_delegate": {
             if (p2.bestDelegateIdx == null) {
+                // v45 — copy-only reframe as "the Gavel"; scoring/data model
+                // (bestDelegateMistake, bestDelegateCorrectIdx()) unchanged.
                 const status = daisStatus(
-                    `Click the delegate you believe deserves <strong>Best Delegate</strong>.`
+                    `Before you adjourn, the committee awards the <strong>Gavel</strong>, its highest honor, to the Best Delegate. Who do you recognize?`
                 );
                 bar.appendChild(status);
             } else {
@@ -2400,7 +2786,7 @@ function renderMotionsDais() {
                     `<strong>${del.country}</strong> selected for Best Delegate.`
                 );
                 bar.appendChild(status);
-                const btn = daisButton("Confirm", "proceed");
+                const btn = daisButton("Award the Gavel", "proceed");
                 btn.addEventListener("click", confirmBestDelegate);
                 bar.appendChild(btn);
             }
@@ -2696,6 +3082,14 @@ function handleAcceptMotion() {
     p2.currentSpeaker = null;
     renderAgenda();
 
+    // v44 — tutorial: fires once, whichever phase's agenda gets its
+    // first motion first. Phase 3 (unmodMode) has no "first motion"
+    // step of its own (its tutorial starts later, at the caucus itself).
+    if (p2.motionsCollected.length === 1) {
+        if (p2.votingMode) showTutorial("p4_intro", "#key-toggle-btn");
+        else if (!p2.unmodMode) showTutorial("p2_disruptiveness", ".agenda-panel");
+    }
+
     // v30 — standing rule across all phases: the player selects exactly 3
     // motions regardless of how many placards raise (Phase 2 has always
     // worked this way; Phase 3 and Phase 4 Stage 1 match it).
@@ -2895,6 +3289,7 @@ function finishPhase2() {
     const totalMistakes = orderMistakes + repeatMistakes + recogMistakes
                         + missedWarns + lateWarns + gavelMistakes;
     const stars = Math.max(0, 3 - totalMistakes);
+    state.phaseStars.p2 = stars;
 
     const clauses = [];
     if (orderMistakes > 0)  clauses.push(`${orderMistakes} wrong order pick${orderMistakes > 1 ? "s" : ""}.`);
@@ -3292,6 +3687,7 @@ function enterRound1() {
 
     const pool = buildRound1RaisePool();
     applyRaisePool(pool);
+    showTutorial("p2_speaker_select", ".delegate-seat.raised");
 
     if (round1FilledCount() >= p2.round1Target) {
         enterRound1Speeches();
@@ -3351,6 +3747,7 @@ function enterRound2() {
     const p2 = state.p2;
     p2.currentRound = 2;
     p2.stage = "round2_select";
+    showTutorial("p2_round2", "#speakers-list");
 
     if (round2FilledCount() >= p2.round2Target) {
         enterRound2Speeches();
@@ -3663,6 +4060,7 @@ function beginSpeech(slotIdx) {
 
     renderMotionsDais();
     renderSpeakersList(false);
+    showTutorial("p2_speech_timer", ".speech-dais");
 
     sp.timerId = setInterval(tickSpeech, 50);
 }
@@ -4093,6 +4491,7 @@ function enterStage2Paper(processingIdx) {
     renderStage2SpeakersPanel();
     renderMotionsDais();
     updateMotionsInstructions("Read the paper into the record.");
+    showTutorial("p4_papers", "#speakers-panel");
 }
 
 function beginStage2Selection(kind) {
@@ -4387,6 +4786,11 @@ function handleAmendmentDeclaration() {
     const label = friendly ? "Friendly" : "Unfriendly";
     showSpeechBubble(sponsor1, label, "committee-room-p2");
     showSpeechBubble(sponsor2, label, "committee-room-p2");
+    showTutorial(
+        "p4_amendment",
+        `#committee-room-p2 .delegate-seat[data-index="${delegateIndexOf(sponsor1)}"], ` +
+        `#committee-room-p2 .delegate-seat[data-index="${delegateIndexOf(sponsor2)}"]`
+    );
     setTimeout(() => {
         clearSpeechBubble(sponsor1, "committee-room-p2");
         clearSpeechBubble(sponsor2, "committee-room-p2");
@@ -4582,6 +4986,7 @@ function finishPhase4() {
     const totalMistakes = orderMistakes + repeatMistakes + recogMistakes
                         + missedWarns + lateWarns + gavelMistakes;
     const stars = Math.max(0, 3 - totalMistakes);
+    state.phaseStars.p4 = stars;
 
     const clauses = [];
     if (orderMistakes > 0)  clauses.push(`${orderMistakes} wrong disruptiveness pick${orderMistakes > 1 ? "s" : ""}.`);
@@ -4860,6 +5265,7 @@ function showPhase5CombinedDebrief() {
 
     const totalMistakes = modTotal + unmodTotal + votingTotal + overallTotal;
     const stars = Math.max(0, 3 - totalMistakes);
+    state.phaseStars.p5 = stars;
 
     const modClauses = [];
     if (m.mod.orderMistakes > 0)  modClauses.push(`${m.mod.orderMistakes} wrong order pick${m.mod.orderMistakes > 1 ? "s" : ""}.`);
@@ -5092,6 +5498,8 @@ function startUnmodCaucus(motion) {
         `Hover a bloc to eavesdrop. Click a delegate to guess that bloc's leader.`
     );
     renderMotionsDais();
+    showTutorial("p3_intro", "#committee-room-p2");
+    showTutorial("p3_timer", ".speech-dais");
 }
 
 function assignBlocs() {
@@ -5610,6 +6018,7 @@ function finishPhase3Debrief() {
     }
 
     const stars = Math.max(0, 3 - blocMistakes - timingMistake);
+    state.phaseStars.p3 = stars;
 
     const clauses = [];
     if (blocMistakes === 1) clauses.push("1 bloc leader missed or misread.");
@@ -5670,15 +6079,90 @@ function renderPostMotionsScreen(phase) {
         fresh.textContent = "Proceed to Timed Crisis →";
         fresh.addEventListener("click", startPhase5Stage1);
     } else if (phase === "phase5") {
-        // v41 — true end of the game: Phase 5 is the last phase and no
-        // Phase 6 exists.
-        fresh.textContent = "Adjourn & Restart";
-        fresh.addEventListener("click", () => location.reload());
+        // v45 — Phase 5's own debrief no longer ends the game directly;
+        // it now hands off to the new global, whole-session debrief.
+        fresh.textContent = "Next →";
+        fresh.addEventListener("click", showGlobalDebrief);
     } else {
         // Fallback for any future terminal phase.
         fresh.textContent = "Adjourn & Restart";
         fresh.addEventListener("click", () => location.reload());
     }
+}
+
+// ==========================================================
+//  GLOBAL DEBRIEF (v45) — whole-session summary across all 5 phases
+// ==========================================================
+const GLOBAL_DEBRIEF_PHASES = [
+    { key: "p1", label: "Phase 1 — Roll Call" },
+    { key: "p2", label: "Phase 2 — Moderated Caucus" },
+    { key: "p3", label: "Phase 3 — Unmoderated Caucus" },
+    { key: "p4", label: "Phase 4 — Voting Procedure" },
+    { key: "p5", label: "Phase 5 — Timed Crisis" },
+];
+const CHAIR_AWARD_FORM_URL = "https://forms.gle/7P5VDLq6cjV7Qf2x8";
+
+function buildGlobalDebriefRow(label, stars) {
+    const row = document.createElement("div");
+    row.className = "global-debrief-row";
+
+    const labelEl = document.createElement("span");
+    labelEl.className = "global-debrief-label";
+    labelEl.textContent = label;
+    row.appendChild(labelEl);
+
+    if (stars == null) {
+        const notPlayed = document.createElement("span");
+        notPlayed.className = "global-debrief-not-played";
+        notPlayed.textContent = "Not Played";
+        row.appendChild(notPlayed);
+    } else {
+        const starsWrap = document.createElement("span");
+        starsWrap.className = "global-debrief-stars";
+        // Reuses renderStarBlock()'s exact star SVG/markup and its
+        // .star.earned/.missed color rules; .global-debrief-star (CSS)
+        // just shrinks them to fit five rows on one screen.
+        for (let i = 0; i < 3; i++) {
+            const star = document.createElement("span");
+            star.className = `star global-debrief-star ${i < stars ? "earned" : "missed"}`;
+            star.innerHTML = `
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M12 2.2l2.95 6.36 6.9.72-5.2 4.72 1.5 6.86L12 17.3l-6.15 3.56 1.5-6.86-5.2-4.72 6.9-.72z"/>
+                </svg>`;
+            starsWrap.appendChild(star);
+        }
+        row.appendChild(starsWrap);
+    }
+    return row;
+}
+
+// A phase reached only via a dev-panel skip (its real debrief never
+// ran) leaves its state.phaseStars entry null forever — shown as "Not
+// Played" above, and here it simply fails the `=== 3` check like any
+// other non-3 value, so a dev-skipped session can never read as perfect.
+function showGlobalDebrief() {
+    const rowsEl = document.getElementById("global-debrief-rows");
+    const messageEl = document.getElementById("global-debrief-message");
+    const awardBtn = document.getElementById("chair-award-btn");
+
+    rowsEl.innerHTML = "";
+    GLOBAL_DEBRIEF_PHASES.forEach(({ key, label }) => {
+        rowsEl.appendChild(buildGlobalDebriefRow(label, state.phaseStars[key]));
+    });
+
+    const [p1, p2, p3, p4, p5] = GLOBAL_DEBRIEF_PHASES.map(({ key }) => state.phaseStars[key]);
+    const perfect = [p1, p2, p3, p4, p5].every(s => s === 3);
+
+    if (perfect) {
+        messageEl.textContent = "A perfect committee! Claim your Chair Award.";
+        awardBtn.href = CHAIR_AWARD_FORM_URL;
+        awardBtn.hidden = false;
+    } else {
+        messageEl.textContent = "Replay committee until you earn three stars in every phase, then come back to claim your Chair Award.";
+        awardBtn.hidden = true;
+    }
+
+    showScreen("global-debrief-screen");
 }
 
 // ==========================================================
@@ -5768,6 +6252,10 @@ document.getElementById("correct-btn").addEventListener("click", () => handleRol
 document.getElementById("proceed-motions-btn").addEventListener("click", startPhase2);
 // v22/v23 — #restart-btn handler is wired dynamically via
 // renderPostMotionsScreen(phase). No static listener.
+// v45 — #global-debrief-screen's own restart button is static markup
+// (unlike #restart-btn, it's never reused for a different phase), so
+// it gets one static listener here instead.
+document.getElementById("global-restart-btn").addEventListener("click", () => location.reload());
 
 /* ============================================================
    DEV MODE — phase-skip panel
@@ -5899,6 +6387,35 @@ function devSkipTo(phase) {
             closeKey();
         }
     });
+})();
+
+// ---------- TUTORIAL OVERLAY WIRING (v44) ----------
+(function initTutorialOverlay() {
+    const popup = document.getElementById("tutorial-popup");
+    const dismissBtn = document.getElementById("tutorial-dismiss-btn");
+    if (dismissBtn) dismissBtn.addEventListener("click", dismissTutorial);
+
+    // Non-blocking: clicking the real UI underneath never needs to
+    // dismiss the popup first. This listener just also closes it when
+    // the click lands outside it, same pattern as the Key popup above.
+    // v46 — _tutorialJustShown skips exactly the one click that caused
+    // showTutorial() to show the popup in the first place (every trigger
+    // point fires from inside some button/seat's own click handler, and
+    // that same click then bubbles here); see renderTutorialStep().
+    document.addEventListener("click", (e) => {
+        if (!popup || popup.hidden) return;
+        if (state._tutorialJustShown) return;
+        if (popup.contains(e.target)) return;
+        dismissTutorial();
+    });
+
+    const checkbox = document.getElementById("tutorial-toggle-checkbox");
+    if (checkbox) {
+        checkbox.checked = state.tutorialMode;
+        checkbox.addEventListener("change", () => {
+            state.tutorialMode = checkbox.checked;
+        });
+    }
 })();
 
 // ---------- BOOT ----------

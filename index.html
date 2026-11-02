@@ -2,7 +2,36 @@
 <!--
     ============================================================
     POINT OF ORDER — A UNCMUNC Chair Simulator
-    index.html — v15
+    index.html — v18
+    v18: Tutorial popup bugfix pass (game.js v46, style.css v30).
+         - Copy: "Associate Chair's Notes" -> "Assistant Chair's Notes"
+           (agenda-panel heading).
+         - No markup changes beyond that; the toggle's new pill look is
+           CSS-only (.tutorial-toggle, style.css).
+    v17: Global, whole-session debrief screen (game.js v45, style.css v29).
+         - New #global-debrief-screen: its own screen (not the shared
+           #post-motions-screen/#phase2-stars block, which only ever
+           shows one phase's 3-star result at a time), shown via
+           game.js's showGlobalDebrief() after Phase 5's own debrief.
+           Holds #global-debrief-rows (five per-phase rows, built by
+           game.js from state.phaseStars), #global-debrief-message, a
+           conditional #chair-award-btn link, and #global-restart-btn
+           (reloads the page, same terminal action every other
+           end-of-game button already uses).
+         - Phase 5's post-motions button now reads "Next →" and opens
+           this screen instead of reloading the page directly
+           (renderPostMotionsScreen("phase5") in game.js).
+         - Title screen flavor text swapped (game.js unchanged — this is
+           a markup-only change to #title-screen's existing paragraph).
+    v16: Tutorial overlay (game.js v44, style.css v28). Additive only.
+         - New #tutorial-popup, a single reusable element (not
+           per-screen) added once at the end of #game-container, shown/
+           hidden and positioned entirely by game.js's showTutorial()/
+           dismissTutorial(). Holds #tutorial-text and a "Got it"
+           dismiss button, #tutorial-dismiss-btn.
+         - New checkbox on the briefing screen, "Show tutorial tips"
+           (checked by default), wired directly to state.tutorialMode
+           in game.js. No persistence.
     v15: Phase 5, "Timed Crisis" (game.js v41). Dev-panel button
          data-dev-phase="5" enabled and relabeled "5 · Timed Crisis"
          (was disabled "5 · Debrief" — that old placeholder text
@@ -60,8 +89,7 @@
             <p class="game-subtitle">A Chair Simulator</p>
             <div class="ram-doodle">🐏</div>
             <p class="flavor-text">
-                The delegates are filing in.<br>
-                Do not embarrass the Secretariat.
+                Get 3 stars in every phase of committee to win!
             </p>
             <button class="big-button" id="begin-btn">Gavel In →</button>
         </section>
@@ -80,6 +108,12 @@
                     <p><strong>Your role:</strong> Chair. Sole authority on procedure. Try not to cry.</p>
                 </div>
             </div>
+            <!-- v16 — wired directly to state.tutorialMode in game.js; no persistence. -->
+            <label class="tutorial-toggle">
+                <input type="checkbox" id="tutorial-toggle-checkbox" checked>
+                Show tutorial tips
+            </label>
+
             <button class="big-button" id="start-roll-call-btn">Begin Roll Call →</button>
 
             <!-- DEV PANEL — hidden unless DEV_MODE=true in game.js -->
@@ -161,7 +195,7 @@
 
                 <aside class="agenda-panel">
                     <div class="agenda-header">
-                        <span class="agenda-title">Associate Chair's Notes</span>
+                        <span class="agenda-title">Assistant Chair's Notes</span>
                         <span class="agenda-clip">📎</span>
                     </div>
                     <ol class="agenda-list" id="agenda-list">
@@ -285,6 +319,30 @@
                  "Adjourn & Restart" after Phase 3). -->
             <button class="big-button" id="restart-btn">Adjourn &amp; Restart</button>
         </section>
+
+        <!-- GLOBAL DEBRIEF — whole-session summary, shown after Phase 5's
+             own debrief via the "Next →" button (game.js's
+             showGlobalDebrief()). Its own screen, not the shared
+             #post-motions-screen/#phase2-stars block, since it needs five
+             per-phase rows instead of one 3-star result. -->
+        <section id="global-debrief-screen" class="screen">
+            <h2 class="phase-title">Committee Adjourned</h2>
+            <p class="flavor-text" id="global-debrief-subtitle">Here is how the full session went.</p>
+            <div class="global-debrief-rows" id="global-debrief-rows"></div>
+            <p class="global-debrief-message" id="global-debrief-message"></p>
+            <div class="global-debrief-actions">
+                <a class="big-button chair-award-btn" id="chair-award-btn" href="#" target="_blank" rel="noopener" hidden>Claim Your Chair Award &rarr;</a>
+                <button class="big-button" id="global-restart-btn">Adjourn &amp; Restart</button>
+            </div>
+        </section>
+
+        <!-- v16 — TUTORIAL OVERLAY. Single reusable element, not tied to
+             any one screen; shown/hidden/positioned entirely by game.js's
+             showTutorial()/dismissTutorial(). Hidden by default. -->
+        <div id="tutorial-popup" class="tutorial-popup" hidden role="note">
+            <p class="tutorial-text" id="tutorial-text"></p>
+            <button class="tutorial-dismiss-btn" id="tutorial-dismiss-btn">Got it</button>
+        </div>
 
     </main>
 

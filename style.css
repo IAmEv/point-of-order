@@ -1,6 +1,32 @@
 /* ========================================================
    POINT OF ORDER — A UNCMUNC Chair Simulator
-   style.css — v27
+   style.css — v30
+   v30: Tutorial toggle pill treatment (game.js v46, index.html v18).
+        - .tutorial-toggle redone as a bordered, gold-tinted pill
+          (--gold/--gold-soft) instead of a plain inline checkbox +
+          label, so it reads as its own UI element on the briefing
+          screen. No new colors.
+   v29: Global, whole-session debrief screen (game.js v45, index.html v17).
+        - New .global-debrief-rows/.global-debrief-row/-label/-stars/
+          -not-played: five compact per-phase rows. .global-debrief-star
+          shrinks the existing .star markup (its .earned/.missed color
+          rules, above, are unchanged) rather than introducing new star
+          styling.
+        - New .global-debrief-message, .global-debrief-actions.
+        - New .chair-award-btn: .big-button with the existing --gold/
+          --wood-dark tokens instead of Carolina Blue, no new colors.
+   v28: Tutorial overlay (game.js v44, index.html v16). Additive only.
+        - New .tutorial-popup: fixed-position card, same visual
+          language as .key-popup (Carolina Blue Dark, double gold top
+          border, Lora body text) but positioned by game.js per step
+          (left/top set inline) rather than anchored to one button.
+        - New .tutorial-dismiss-btn: small gold-accented button, same
+          family as .key-toggle-btn.
+        - New .tutorial-highlight: dashed outline using the existing
+          --gold token (no new color), applied by game.js to whatever
+          element(s) a step targets.
+        - New .tutorial-toggle: the briefing screen's "Show tutorial
+          tips" checkbox label.
    v27: Phase 5 debrief heading style (game.js v41, index.html v15).
         - New .mistake-summary .mistake-heading: small caps, Carolina
           Blue Dark, labels the three per-stage groups (Moderated
@@ -316,6 +342,35 @@ html, body {
     margin-bottom: 1rem;
 }
 .memo-body p { margin-bottom: 0.5rem; line-height: 1.6; }
+
+/* v28, pill treatment v46 — briefing screen's tutorial-mode toggle.
+   Was a small plain inline checkbox + label (too easy to miss); now a
+   bordered, gold-tinted pill of its own, same visual family as the
+   procedural-label Special Elite stamps elsewhere (DESIGN.md §4),
+   using the existing --gold/--gold-soft tokens, not a new color. */
+.tutorial-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 0 0 1.25rem;
+    padding: 0.55rem 1.2rem;
+    background: var(--gold-soft);
+    border: 1.5px solid var(--gold);
+    border-radius: 999px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    font-family: 'Special Elite', monospace;
+    font-size: 0.85rem;
+    letter-spacing: 0.03em;
+    color: var(--carolina-blue-dark);
+    cursor: pointer;
+    user-select: none;
+}
+.tutorial-toggle input {
+    width: 17px;
+    height: 17px;
+    cursor: pointer;
+    accent-color: var(--carolina-blue-dark);
+}
 
 /* ---------- PHASE HEADER ---------- */
 .phase-header.slim {
@@ -833,6 +888,77 @@ html, body {
     margin-top: 0;
 }
 
+/* ---------- GLOBAL DEBRIEF (v29) ---------- */
+.global-debrief-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    max-width: 420px;
+    margin: 1.5rem auto 1rem;
+}
+.global-debrief-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.6rem 1rem;
+    background: white;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 3px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.global-debrief-label {
+    font-family: 'Lora', serif;
+    font-size: 0.9rem;
+    color: var(--ink);
+    text-align: left;
+}
+.global-debrief-stars {
+    display: flex;
+    gap: 0.2rem;
+}
+/* Shrinks renderStarBlock()'s big single-result stars to fit five
+   compact rows; .star.earned/.missed's fill/filter rules (style.css,
+   above) are untouched and still color these the same way. */
+.global-debrief-star {
+    width: 22px;
+    height: 22px;
+    opacity: 1;
+    transform: none;
+    animation: none;
+}
+.global-debrief-not-played {
+    font-family: 'Special Elite', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+}
+.global-debrief-message {
+    font-family: 'Lora', serif;
+    font-style: italic;
+    font-size: 0.9rem;
+    color: var(--ink-soft);
+    max-width: 440px;
+    margin: 0 auto 1.2rem;
+    text-wrap: pretty;
+}
+.global-debrief-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+}
+.chair-award-btn {
+    display: inline-block;
+    text-decoration: none;
+    background: var(--gold);
+    box-shadow: 0 3px 0 var(--wood-dark), 0 6px 12px rgba(0,0,0,0.15);
+}
+.chair-award-btn:hover {
+    box-shadow: 0 4px 0 var(--wood-dark), 0 8px 14px rgba(0,0,0,0.18);
+}
+
 /* ---------- PHASE 2: MOTIONS ---------- */
 .phase2-body {
     display: grid;
@@ -1311,6 +1437,56 @@ html, body {
     font-style: italic;
     color: rgba(255,255,255,0.75);
     font-family: 'Lora', serif;
+}
+
+/* ---------- TUTORIAL OVERLAY (v28) ---------- */
+/* Single reusable element (index.html), repositioned per step by
+   game.js's positionTutorialPopup() via inline left/top — fixed so
+   those coordinates are viewport-relative, matching
+   getBoundingClientRect(). Same visual language as .key-popup. */
+.tutorial-popup {
+    position: fixed;
+    max-width: 300px;
+    background: var(--carolina-blue-dark);
+    color: white;
+    border: 1.5px solid var(--carolina-blue-dark);
+    border-top: 3px double var(--gold);
+    border-radius: 3px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+    padding: 0.9rem 1rem 0.8rem;
+    z-index: 400;
+    animation: fade-in 0.18s ease;
+}
+.tutorial-text {
+    font-family: 'Lora', serif;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: white;
+    margin-bottom: 0.7rem;
+    text-wrap: pretty;
+}
+.tutorial-dismiss-btn {
+    display: block;
+    margin-left: auto;
+    padding: 0.4rem 0.9rem;
+    background: transparent;
+    border: 1.5px solid var(--gold);
+    color: var(--gold-soft);
+    font-family: 'Special Elite', monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+.tutorial-dismiss-btn:hover { background: rgba(201,162,75,0.18); }
+
+/* Reuses the --gold token, not a new color — applied by game.js to
+   whatever element(s) the current step targets. */
+.tutorial-highlight {
+    outline: 3px dashed var(--gold);
+    outline-offset: 4px;
 }
 
 /* Speaker Selection prompt emphasis */
