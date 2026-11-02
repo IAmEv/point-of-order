@@ -2,7 +2,14 @@
 <!--
     ============================================================
     POINT OF ORDER — A UNCMUNC Chair Simulator
-    index.html — v18
+    index.html — v19
+    v19: Small fixes pass (game.js v47, style.css v31).
+         - #chair-award-btn is now a plain <button> (was an <a>, since it
+           no longer navigates anywhere directly — game.js opens the
+           form via window.open()), no longer has `hidden`: it's always
+           visible, gated by `disabled` instead.
+         - New #global-debrief-screenshot-hint, shown only on a perfect
+           session.
     v18: Tutorial popup bugfix pass (game.js v46, style.css v30).
          - Copy: "Associate Chair's Notes" -> "Assistant Chair's Notes"
            (agenda-panel heading).
@@ -331,7 +338,15 @@
             <div class="global-debrief-rows" id="global-debrief-rows"></div>
             <p class="global-debrief-message" id="global-debrief-message"></p>
             <div class="global-debrief-actions">
-                <a class="big-button chair-award-btn" id="chair-award-btn" href="#" target="_blank" rel="noopener" hidden>Claim Your Chair Award &rarr;</a>
+                <!-- v48 — plain <button>, not an <a>, since it must open
+                     the form via window.open() (never navigate this tab)
+                     and support a real disabled state when not perfect
+                     yet. Its own click handler (initGlobalDebriefScreen())
+                     is entirely separate from #global-restart-btn's. -->
+                <button class="big-button chair-award-btn" id="chair-award-btn" disabled>Claim Your Chair Award &rarr;</button>
+                <p class="global-debrief-screenshot-hint" id="global-debrief-screenshot-hint" hidden>
+                    Take a screenshot of this full awards screen before you go; the form won't show it to you again.
+                </p>
                 <button class="big-button" id="global-restart-btn">Adjourn &amp; Restart</button>
             </div>
         </section>

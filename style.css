@@ -1,6 +1,14 @@
 /* ========================================================
    POINT OF ORDER — A UNCMUNC Chair Simulator
-   style.css — v30
+   style.css — v31
+   v31: Small fixes pass (game.js v47, index.html v19).
+        - New .bloc-guess-p3/.bloc-guess-p5: small corner tag badges on
+          the Gavel-selection screen (startPhase5BestDelegate()), same
+          gold family as .leader-guess. ::before/::after so one seat can
+          show both at once.
+        - .chair-award-btn:hover now excludes :disabled; new
+          .chair-award-btn:disabled greyed-out state and new
+          .global-debrief-screenshot-hint text.
    v30: Tutorial toggle pill treatment (game.js v46, index.html v18).
         - .tutorial-toggle redone as a bordered, gold-tinted pill
           (--gold/--gold-soft) instead of a plain inline checkbox +
@@ -521,6 +529,35 @@ html, body {
     box-shadow: 0 4px 12px rgba(201,162,75,0.4);
 }
 
+/* v47 — Gavel-selection bloc-leader memory badges (reference only; see
+   startPhase5BestDelegate()). Small corner tags in the same gold family
+   as .leader-guess above, not a new heavy UI element. ::before/::after
+   so a seat guessed in both caucuses can show both tags at once. */
+.delegate-seat.bloc-guess-p3::before,
+.delegate-seat.bloc-guess-p5::after {
+    position: absolute;
+    top: -6px;
+    font-family: 'Special Elite', monospace;
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--carolina-blue-dark);
+    background: var(--gold-soft);
+    border: 1px solid var(--gold);
+    border-radius: 3px;
+    padding: 0.05rem 0.3rem;
+    z-index: 5;
+    pointer-events: none;
+}
+.delegate-seat.bloc-guess-p3::before {
+    content: "P3";
+    left: -6px;
+}
+.delegate-seat.bloc-guess-p5::after {
+    content: "P5";
+    right: -6px;
+}
+
 /* ---------- DELEGATE FIGURE ---------- */
 .delegate-figure {
     display: flex;
@@ -955,8 +992,27 @@ html, body {
     background: var(--gold);
     box-shadow: 0 3px 0 var(--wood-dark), 0 6px 12px rgba(0,0,0,0.15);
 }
-.chair-award-btn:hover {
+.chair-award-btn:hover:not(:disabled) {
     box-shadow: 0 4px 0 var(--wood-dark), 0 8px 14px rgba(0,0,0,0.18);
+}
+/* v48 — visibly greyed out, not merely hidden, until every phase in
+   state.phaseStars reads a perfect 3 (showGlobalDebrief()). Overrides
+   .big-button:disabled's gold-at-low-opacity look with a flatter,
+   unambiguously "not yet earned" grey, same wood-dark shadow family. */
+.chair-award-btn:disabled {
+    background: var(--cream-dark);
+    color: var(--ink-soft);
+    box-shadow: 0 3px 0 var(--wood-dark), 0 6px 12px rgba(0,0,0,0.1);
+    opacity: 0.7;
+}
+.global-debrief-screenshot-hint {
+    font-family: 'Lora', serif;
+    font-style: italic;
+    font-size: 0.82rem;
+    color: var(--ink-soft);
+    max-width: 380px;
+    text-wrap: pretty;
+    margin: -0.25rem 0 0;
 }
 
 /* ---------- PHASE 2: MOTIONS ---------- */
