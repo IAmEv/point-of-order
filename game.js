@@ -1,5 +1,51 @@
 /* ==========================================================
    POINT OF ORDER — Game Logic
+   v55: Double-click guards on three delayed chair prompts:
+        handleProposerChoice(), beginAmendmentAnnouncementAnimation(),
+        handleAmendmentDeclaration(). Each button stays clickable during
+        its 1.4-1.6s transition; repeat clicks re-ran the handler. In
+        Stage 4 that stacked up into two paper-vote results whose second
+        advanceAfterPaperVote() skipped paper 2 and threw page errors
+        (found by an automated perfect-score playthrough).
+   v54: Music / SFX mute toggles (index.html v22, style.css v32).
+        - #music-toggle-btn mutes only the background music (.muted on
+          _bgMusic, so it keeps its place in the loop while silent).
+        - #sfx-toggle-btn mutes everything else: playThud() no-ops and
+          every delegate voice element is .muted (a voice already
+          looping under a bubble goes silent / comes back in place).
+        - Session-only, no persistence (§11). Clicks stopPropagation
+          (so they never count as an outside-click for the Key/tutorial)
+          and blur (so Space can't re-toggle during roll call).
+   v53: Dev panel "Final Debrief (3★ all)" button (index.html v21) ->
+        devSkipToPerfectDebrief(): sets every state.phaseStars entry to
+        3 and calls showGlobalDebrief(), so the perfect-session branch
+        (message, enabled Chair Award button, screenshot hint) shows.
+   v52: Background music.
+        - BACKGROUND_MUSIC config (path / volume 0.08 / trimEndSec 3).
+          Starts on "Gavel In" (or a dev-skip), loops for the whole
+          session, untouched by showScreen(), and jumps back to 0 three
+          seconds before the file's end (100ms poll, manual loop).
+   v51: Delegate voice scope + unmod tweaks.
+        - showSpeechBubble() takes a 5th `voice` arg; false = silent.
+          Roll call replies, motion proposals (first/second/corrected),
+          and the Friendly/Unfriendly sponsor bubbles are now silent.
+        - Unmod caucus dialogue (renderCaucusBubble, Phase 3 + 5) starts
+          its clip at CAUCUS_VOICE_START_SEC (1s) and plays at
+          CAUCUS_VOICE_FF_RATE (3x) while fast-forward is on;
+          setCaucusFF() and the 0:00 FF auto-off re-sync live clips.
+   v50: Delegate spoken-voice clips.
+        - DELEGATE_SOUND (next to GAVEL_SOUND): two clips per
+          personality; DELEGATE_VOICE_VOLUME (0.5) tunes them all.
+        - generateCommittee() -> assignDelegateVoices(): one preloaded,
+          looping <audio> per delegate, alternating clip 1/2 within a
+          personality so the two same-role delegates never sound alike.
+        - showSpeechBubble() starts the speaker's clip from 0; a
+          MutationObserver stops + rewinds it the instant that bubble
+          element leaves the DOM (any removal path), so caucus cutoff
+          overlaps play both voices until each bubble actually clears.
+          showScreen() also stops every voice.
+        - No warm-up: voices unlock lazily on first play, after the
+          "Gavel In" click's thud has already unlocked page audio.
    v49: Disruptiveness Key auto-opens/closes with the "check the Key"
         tutorial steps (index.html/style.css unchanged).
         - initDisruptivenessKey()'s openKey()/closeKey() pulled out to
@@ -1122,10 +1168,39 @@ const GAVEL_SOUND = {
     thud: "assets/thud.mp3",
 };
 
+/* ---------- DELEGATE VOICE SWAP (v50) -------------------- */
+// Two looping ~20s spoken-voice clips per personality. Paths match the
+// actual on-disk names in assets/ (case matters on most web hosts — note
+// "carolinamun style 1" vs "CarolinaMUN style 2"). An empty/missing
+// array makes that personality silently voiceless; nothing ever throws.
+const DELEGATE_SOUND = {
+    power:    ["assets/Power del 1.m4a", "assets/Power del 2.m4a"],
+    demboy:   ["assets/Dem boy 1.m4a", "assets/Dem boy 2.m4a"],
+    carolina: ["assets/carolinamun style 1.m4a", "assets/CarolinaMUN style 2.m4a"],
+    slacker:  ["assets/Slacker 1.m4a", "assets/Slacker 2.m4a"],
+};
+// Relative to the gavel thud pool's 0.75 element volume: clearly under
+// it but still easy to hear. Tune here.
+const DELEGATE_VOICE_VOLUME = 0.5;
+// v51 — unmod caucus lines skip the clip's first second, and play at
+// this rate while caucus fast-forward is on (matches dialogue speed).
+const CAUCUS_VOICE_START_SEC = 1;
+const CAUCUS_VOICE_FF_RATE   = 3;
+
+/* ---------- BACKGROUND MUSIC (v52) ----------------------- */
+// Loops quietly for the whole session (never stopped by phase/screen
+// changes). The last trimEndSec of the file is skipped: playback jumps
+// back to 0 that far before the end. path: null = no music.
+const BACKGROUND_MUSIC = {
+    path:       "assets/background music.mp3",
+    volume:     0.08,
+    trimEndSec: 3,
+};
+
 /* ==========================================================
    DEV MODE
 ========================================================== */
-const DEV_MODE = true;
+const DEV_MODE = false;
 
 /* ==========================================================
    SPEECH TUNING
@@ -1809,6 +1884,9 @@ function shuffle(arr) {
     return a;
 }
 function showScreen(id) {
+    // v50 — a bubble left behind on a now-hidden screen isn't visible,
+    // so its voice shouldn't keep looping either.
+    stopAllDelegateVoices();
     document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
     document.getElementById(id).classList.add("active");
 }
@@ -2037,6 +2115,10 @@ function generateCommittee() {
         markedAs: null,
     }));
 
+    // v50 — voice clips: alternate within each personality so the two
+    // same-personality delegates never share a clip.
+    assignDelegateVoices(state.delegates);
+
     // v23 — Dem-Boy ↔ Power-Del pairing is 1:1, no overlap.
     // Guarantees Phase 3 blocs can be split cleanly with each
     // Dem-Boy riding with their paired Power-Del.
@@ -2143,7 +2225,10 @@ function delegateIndexOf(delegate) {
 // v34 — isHTML lets Stage 3 speeches render <strong> around paper-name
 // mentions (SPEECH_CONTENT); every other caller keeps passing plain
 // text through textContent, unaffected.
-function showSpeechBubble(delegate, text, containerId = "committee-room", isHTML = false) {
+// v51 — voice: false = silent bubble (roll call, motion proposals,
+// Friendly/Unfriendly); an object passes options through to
+// startDelegateVoice (unmod caucus uses { caucus: true }).
+function showSpeechBubble(delegate, text, containerId = "committee-room", isHTML = false, voice = {}) {
     const seat = getSeatElement(delegateIndexOf(delegate), containerId);
     if (!seat) return;
     seat.querySelectorAll(".speech-bubble").forEach(b => b.remove());
@@ -2152,6 +2237,7 @@ function showSpeechBubble(delegate, text, containerId = "committee-room", isHTML
     if (isHTML) bubble.innerHTML = text;
     else bubble.textContent = text;
     seat.appendChild(bubble);
+    if (voice) startDelegateVoice(delegate, bubble, voice);
 }
 function clearSpeechBubble(delegate, containerId = "committee-room") {
     const seat = getSeatElement(delegateIndexOf(delegate), containerId);
@@ -2215,7 +2301,7 @@ async function nextRollCall() {
 
     if (del.present) {
         const response = PERSONALITIES[del.personality].getResponse(del.country, del);
-        showSpeechBubble(del, response.text);
+        showSpeechBubble(del, response.text, "committee-room", false, false);
         const variant = PERSONALITIES[del.personality].expected === "voting" ? "raised-voting" : "raised";
         raisePlacard(del, "committee-room", variant);
         del._lastResponse = response;
@@ -2250,7 +2336,7 @@ async function handleRollAction(action) {
         document.getElementById("correction-row").classList.add("hidden");
         await sleep(500);
         const corrected = PERSONALITIES.slacker.getCorrectedResponse();
-        showSpeechBubble(del, corrected.text);
+        showSpeechBubble(del, corrected.text, "committee-room", false, false);
         raisePlacard(del, "committee-room", "raised");
         del._lastResponse = corrected;
         document.getElementById("action-row").classList.remove("hidden");
@@ -3189,7 +3275,7 @@ function onDelegateClickForMotion(e) {
     const motion = generateMotion(del);
     del._pendingMotion = motion;
 
-    showSpeechBubble(del, motion.spoken, "committee-room-p2");
+    showSpeechBubble(del, motion.spoken, "committee-room-p2", false, false);
     p2.stage = "speaking";
     updateMotionsInstructions(
         motion.type === "unmod"
@@ -3233,7 +3319,7 @@ function handleDilatory() {
     del._pendingMotion = secondMotion;
     setTimeout(() => {
         p2.motionTransitioning = false;
-        showSpeechBubble(del, secondMotion.spoken, "committee-room-p2");
+        showSpeechBubble(del, secondMotion.spoken, "committee-room-p2", false, false);
         p2.stage = "speaking2";
         updateMotionsInstructions(`${del.country} tries again with a different motion.`);
         renderMotionsDais();
@@ -3251,7 +3337,7 @@ function handleModCorrection() {
     del._pendingMotion = corrected;
     setTimeout(() => {
         p2.motionTransitioning = false;
-        showSpeechBubble(del, corrected.spoken, "committee-room-p2");
+        showSpeechBubble(del, corrected.spoken, "committee-room-p2", false, false);
         p2.stage = "speaking2";
         updateMotionsInstructions(`${del.country} re-proposes with the corrected minutes.`);
         renderMotionsDais();
@@ -3768,6 +3854,9 @@ function buildRoundRobinOrder(proposerIdx, choice) {
 
 function handleProposerChoice() {
     const p2 = state.p2;
+    // v55 — the prompt button stays clickable through the 1400ms
+    // delay below; a second click used to re-run all of this.
+    if (p2.stage !== "asking_order" || p2.proposerChoice != null) return;
     const motion = p2.speakersMotion;
     const proposer = motion.delegate;
     const proposerIdx = delegateIndexOf(proposer);
@@ -4293,7 +4382,7 @@ function tickSpeech() {
             sp.phase = "zero";
             // v32 — the FF button disappears entirely once the timer hits
             // 0:00; no FF state should persist past that point.
-            if (sp.caucusMode) sp.ffActive = false;
+            if (sp.caucusMode) { sp.ffActive = false; syncCaucusVoiceRate(); }
             if (sp.warning == null) {
                 sp.warning = "missed";
                 // v23 — splash for missed warning (fires at 0:00).
@@ -4958,6 +5047,10 @@ function beginStage4() {
 // beat — no real countdown runs.
 function beginAmendmentAnnouncementAnimation() {
     const p2 = state.p2;
+    // v55 — reentry guard: the button stays clickable for the 1600ms
+    // below, and a repeat click queued a second stage transition.
+    if (p2.stage !== "stage4_announcing_timer" || p2.stage4._announcing) return;
+    p2.stage4._announcing = true;
     const leaderDel = p2.stage4.submitter;
     const seat = getSeatElement(delegateIndexOf(leaderDel), "committee-room-p2");
     if (seat) {
@@ -4980,12 +5073,20 @@ function beginAmendmentAnnouncementAnimation() {
 // Both of the current paper's sponsors get a matching speech bubble.
 function handleAmendmentDeclaration() {
     const p2 = state.p2;
+    // v55 — reentry guard (same 1400ms-still-clickable problem). An
+    // extra click here queued a second "-> paper vote" transition that
+    // could land after the player had already called the vote, which
+    // cascaded into two paper-vote results and two
+    // advanceAfterPaperVote() calls — the second skipped paper 2
+    // entirely and jumped straight to the debrief.
+    if (p2.stage !== "stage4_declaring" || p2.stage4._declaring) return;
+    p2.stage4._declaring = true;
     const paper = currentStage2Paper();
     const [sponsor1, sponsor2] = paperSponsors(paper);
     const friendly = p2.stage4.friendly;
     const label = friendly ? "Friendly" : "Unfriendly";
-    showSpeechBubble(sponsor1, label, "committee-room-p2");
-    showSpeechBubble(sponsor2, label, "committee-room-p2");
+    showSpeechBubble(sponsor1, label, "committee-room-p2", false, false);
+    showSpeechBubble(sponsor2, label, "committee-room-p2", false, false);
     setTimeout(() => {
         clearSpeechBubble(sponsor1, "committee-room-p2");
         clearSpeechBubble(sponsor2, "committee-room-p2");
@@ -5899,7 +6000,7 @@ function isCutoffLine(line) {
 // bubble it's cutting off, so it reads as on top rather than winning stacking
 // by DOM-order coincidence.
 function renderCaucusBubble(delegate, text, overlap = false) {
-    showSpeechBubble(delegate, text, "committee-room-p2");
+    showSpeechBubble(delegate, text, "committee-room-p2", false, { caucus: true });
     const seat = getSeatElement(delegateIndexOf(delegate), "committee-room-p2");
     const bubble = seat ? seat.querySelector(".speech-bubble") : null;
     if (overlap) {
@@ -6157,6 +6258,7 @@ function setCaucusFF(active) {
     if (!sp || sp.ffActive === active) return;
     sp.ffActive = active;
     rescaleActiveCaucusStep();
+    syncCaucusVoiceRate();
     const btn = document.getElementById("caucus-ff-btn");
     if (btn) {
         btn.classList.toggle("active", active);
@@ -6437,6 +6539,7 @@ function warmUpThudAudioPool() {
 }
 
 function playThud() {
+    if (_sfxMuted) return;
     if (!_thudPool || _thudPool.length === 0) return;
     const a = _thudPool[_thudPoolIdx];
     _thudPoolIdx = (_thudPoolIdx + 1) % _thudPool.length;
@@ -6446,6 +6549,182 @@ function playThud() {
         if (p && typeof p.catch === "function") p.catch(() => {});
     } catch (e) { /* ignore */ }
 }
+
+
+// ==========================================================
+//  DELEGATE VOICE AUDIO (v50)
+// ==========================================================
+// One preloaded <audio> per delegate (built at committee generation), so
+// two delegates can always talk over each other (caucus cutoff overlap,
+// paired sponsor bubbles) without fighting over a shared element.
+// Lifecycle is tied to the bubble element itself rather than to any
+// particular clear call: bubbles get removed by clearSpeechBubble, bulk
+// querySelectorAll(...).remove(), and full room re-renders, so a single
+// MutationObserver stops a voice the moment its bubble leaves the DOM —
+// exactly in step with the visual, whichever path removed it.
+const _delegateVoice = new WeakMap();    // delegate -> HTMLAudioElement
+const _voiceBubble = new Map();          // playing audio -> its live bubble
+let _voiceObserver = null;
+
+function assignDelegateVoices(delegates) {
+    const counts = {};
+    delegates.forEach(d => {
+        try {
+            const clips = (DELEGATE_SOUND[d.personality] || []).filter(Boolean);
+            if (clips.length === 0) return;
+            const n = counts[d.personality] || 0;
+            counts[d.personality] = n + 1;
+            const a = new Audio(encodeURI(clips[n % clips.length]));
+            a.preload = "auto";
+            a.loop = true;
+            a.volume = DELEGATE_VOICE_VOLUME;
+            try { a.load(); } catch (e) { /* ignore */ }
+            _delegateVoice.set(d, a);
+        } catch (e) { /* ignore — delegate stays voiceless */ }
+    });
+}
+
+const _caucusVoiceAudio = new Set();     // playing audio started by unmod dialogue
+
+function stopVoiceAudio(a) {
+    _voiceBubble.delete(a);
+    _caucusVoiceAudio.delete(a);
+    try { a.pause(); a.currentTime = 0; a.playbackRate = 1; } catch (e) { /* ignore */ }
+}
+
+function caucusVoiceRate() {
+    return isCaucusFFActive() ? CAUCUS_VOICE_FF_RATE : 1;
+}
+
+// Re-applies the FF rate to every unmod voice currently playing, so
+// toggling FF mid-line speeds up / slows down the live clip in place.
+function syncCaucusVoiceRate() {
+    const rate = caucusVoiceRate();
+    _caucusVoiceAudio.forEach(a => {
+        try { a.playbackRate = rate; } catch (e) { /* ignore */ }
+    });
+}
+
+function stopAllDelegateVoices() {
+    [..._voiceBubble.keys()].forEach(stopVoiceAudio);
+}
+
+function ensureVoiceObserver() {
+    if (_voiceObserver || typeof MutationObserver === "undefined") return;
+    _voiceObserver = new MutationObserver(() => {
+        if (_voiceBubble.size === 0) return;
+        _voiceBubble.forEach((bubble, a) => {
+            if (!bubble.isConnected) stopVoiceAudio(a);
+        });
+    });
+    _voiceObserver.observe(document.body, { childList: true, subtree: true });
+}
+
+function startDelegateVoice(delegate, bubble, opts = {}) {
+    const a = delegate && _delegateVoice.get(delegate);
+    if (!a) return;
+    try {
+        ensureVoiceObserver();
+        // Re-pointing to the new bubble before the observer sees the old
+        // one's removal keeps a same-delegate re-show from being cut off.
+        _voiceBubble.set(a, bubble);
+        a.muted = _sfxMuted;
+        if (opts.caucus) {
+            _caucusVoiceAudio.add(a);
+            a.currentTime = CAUCUS_VOICE_START_SEC;
+            a.playbackRate = caucusVoiceRate();
+        } else {
+            _caucusVoiceAudio.delete(a);
+            a.currentTime = 0;
+            a.playbackRate = 1;
+        }
+        const p = a.play();
+        if (p && typeof p.catch === "function") p.catch(() => {});
+    } catch (e) { /* ignore */ }
+}
+
+// ==========================================================
+//  BACKGROUND MUSIC (v52)
+// ==========================================================
+let _bgMusic = null;
+let _bgMusicTimer = null;
+// v54 — session-only mute flags, driven by the #audio-controls buttons.
+let _musicMuted = false;
+let _sfxMuted = false;
+function initBackgroundMusic() {
+    if (!BACKGROUND_MUSIC.path) return;
+    try {
+        const a = new Audio(encodeURI(BACKGROUND_MUSIC.path));
+        a.preload = "auto";
+        a.volume = BACKGROUND_MUSIC.volume;
+        a.muted = _musicMuted;
+        try { a.load(); } catch (e) { /* ignore */ }
+        _bgMusic = a;
+    } catch (e) { _bgMusic = null; }
+}
+
+// Manual loop instead of a.loop so the tail can be trimmed. Polled at
+// 100ms (timeupdate alone only fires ~4x/sec); falls back to a plain
+// native loop if the file is too short / duration unknown.
+function bgMusicLoopCheck() {
+    const a = _bgMusic;
+    if (!a) return;
+    const d = a.duration;
+    const trim = BACKGROUND_MUSIC.trimEndSec || 0;
+    if (!isFinite(d) || d <= trim + 1) { a.loop = true; return; }
+    a.loop = false;
+    if (a.currentTime >= d - trim || a.ended) {
+        try {
+            a.currentTime = 0;
+            if (a.paused) { const p = a.play(); if (p && p.catch) p.catch(() => {}); }
+        } catch (e) { /* ignore */ }
+    }
+}
+
+// Idempotent: safe to call from every user gesture that might be the
+// first one (Gavel In, dev-skip); only the first call starts playback.
+function startBackgroundMusic() {
+    const a = _bgMusic;
+    if (!a || !a.paused) return;
+    try {
+        const p = a.play();
+        if (p && typeof p.catch === "function") p.catch(() => {});
+        if (!_bgMusicTimer) _bgMusicTimer = setInterval(bgMusicLoopCheck, 100);
+    } catch (e) { /* ignore */ }
+}
+
+// ==========================================================
+//  MUTE TOGGLES (v54)
+// ==========================================================
+function setMusicMuted(muted) {
+    _musicMuted = muted;
+    if (_bgMusic) { try { _bgMusic.muted = muted; } catch (e) { /* ignore */ } }
+}
+
+function setSfxMuted(muted) {
+    _sfxMuted = muted;
+    (state.delegates || []).forEach(d => {
+        const a = _delegateVoice.get(d);
+        if (a) { try { a.muted = muted; } catch (e) { /* ignore */ } }
+    });
+}
+
+(function initAudioControls() {
+    const wire = (id, getMuted, setMuted) => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            setMuted(!getMuted());
+            const muted = getMuted();
+            btn.classList.toggle("muted", muted);
+            btn.setAttribute("aria-pressed", muted ? "true" : "false");
+            btn.blur();
+        });
+    };
+    wire("music-toggle-btn", () => _musicMuted, setMusicMuted);
+    wire("sfx-toggle-btn", () => _sfxMuted, setSfxMuted);
+})();
 
 // ==========================================================
 //  INPUT / EVENT WIRING
@@ -6468,6 +6747,7 @@ document.addEventListener("keydown", (e) => {
 document.getElementById("begin-btn").addEventListener("click", () => {
     playThud();
     warmUpThudAudioPool();
+    startBackgroundMusic();
     generateCommittee();
     showScreen("briefing-screen");
 });
@@ -6509,8 +6789,19 @@ function devAutoCompletePhase1() {
     state.devSkippedPhase1 = true;
 }
 
+// v53 — dev-only: deliberately fabricates a perfect session (the one
+// exception to "a dev-skip can never read as perfect"), so the final
+// debrief's perfect branch / Chair Award button can be checked quickly.
+function devSkipToPerfectDebrief() {
+    warmUpThudAudioPool();
+    startBackgroundMusic();
+    state.phaseStars = { p1: 3, p2: 3, p3: 3, p4: 3, p5: 3 };
+    showGlobalDebrief();
+}
+
 function devSkipTo(phase) {
     warmUpThudAudioPool();
+    startBackgroundMusic();
     if (phase === 1) {
         startRollCall();
         return;
@@ -6572,6 +6863,11 @@ function devSkipTo(phase) {
             const phase = parseInt(btn.dataset.devPhase, 10);
             devSkipTo(phase);
         });
+    });
+    // v53 — jump straight to the whole-session debrief with a perfect
+    // 3-star result in every phase (unlocks the Chair Award button).
+    panel.querySelectorAll("[data-dev-debrief]").forEach(btn => {
+        btn.addEventListener("click", devSkipToPerfectDebrief);
     });
 })();
 
@@ -6680,3 +6976,4 @@ function closeDisruptivenessKey() {
 
 // ---------- BOOT ----------
 initThudAudioPool();
+initBackgroundMusic();

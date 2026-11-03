@@ -2,7 +2,11 @@
 <!--
     ============================================================
     POINT OF ORDER — A UNCMUNC Chair Simulator
-    index.html — v20
+    index.html — v22
+    v22: #audio-controls — fixed bottom-left Music / SFX mute toggles
+         (game.js v54, style.css v32). Outside <main>, so they stay
+         put across every screen.
+    v21: Dev panel gains a "Final Debrief (3★ all)" button (game.js v53).
     v20: Title screen flavor text gains a second line, "YOU pick the
          Best Delegate." (game.js/style.css unchanged).
     v19: Small fixes pass (game.js v47, style.css v31).
@@ -89,6 +93,12 @@
 <body>
     <div class="paper-texture"></div>
 
+    <!-- v22 — audio mute toggles, visible on every screen -->
+    <div id="audio-controls" class="audio-controls" aria-label="Audio controls">
+        <button type="button" class="audio-toggle-btn" id="music-toggle-btn" aria-pressed="false" title="Mute background music">♪ Music</button>
+        <button type="button" class="audio-toggle-btn" id="sfx-toggle-btn" aria-pressed="false" title="Mute sound effects and voices">🔊 SFX</button>
+    </div>
+
     <main id="game-container">
 
         <!-- TITLE SCREEN -->
@@ -135,6 +145,7 @@
                     <button class="dev-btn" data-dev-phase="3">3 · Unmod</button>
                     <button class="dev-btn" data-dev-phase="4">4 · Voting</button>
                     <button class="dev-btn" data-dev-phase="5">5 · Timed Crisis</button>
+                    <button class="dev-btn" data-dev-debrief="perfect">★ Final Debrief (3★ all)</button>
                 </div>
             </aside>
         </section>

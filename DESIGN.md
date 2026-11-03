@@ -95,6 +95,14 @@ Same pattern via `GAVEL_SOUND`. On load, if a path is set, a pool of 6 `<Audio>`
 
 Phase 3 unmod motions never trigger the dilatory or mod-correction thuds (those UI paths are suppressed via `unmodMode`).
 
+**Delegate voices (v50):** `DELEGATE_SOUND` (next to `GAVEL_SOUND`) maps each personality to two ~20s clips in `assets/`; an empty/missing array makes that role silently voiceless. `generateCommittee()` gives every delegate their own preloaded, looping `<audio>`, alternating clip 1/2 within a personality. `showSpeechBubble()` starts the speaker's clip from 0. A MutationObserver stops and rewinds it once that bubble element leaves the DOM, whichever code path removed it, so both voices play during a caucus cutoff overlap. `showScreen()` stops all voices. Volume comes from `DELEGATE_VOICE_VOLUME` (0.5, against the thud's 0.75). It is always on and has no warm-up: voices unlock lazily, after the "Gavel In →" thud has already unlocked page audio.
+
+**Voice scope (v51):** only speeches (Phase 2, Phase 4 Stage 3) and unmod caucus dialogue are voiced. Roll call replies, motion proposals and the Friendly/Unfriendly bubbles pass `voice = false` (5th arg of `showSpeechBubble()`). Unmod lines start at `CAUCUS_VOICE_START_SEC` (1s) and play at `CAUCUS_VOICE_FF_RATE` (3x) while fast-forward is on. Toggling FF changes the speed of a clip that's already playing.
+
+**Background music (v52):** `BACKGROUND_MUSIC` (`path`, `volume` 0.08, `trimEndSec` 3). One `<audio>` starts on "Gavel In →" (or a dev-skip) and loops for the whole session; nothing stops it between phases. The code loops it by hand, jumping back to 0 three seconds before the end of the file (checked every 100ms). A restart reloads the page, so the music starts over at the next "Gavel In".
+
+**Mute toggles (v54):** two buttons sit fixed in the bottom-left on every screen (`#audio-controls`, outside `<main>`). **♪ Music** mutes only the background music, which keeps playing silently so it doesn't lose its place. **🔊 SFX** mutes everything else: the gavel thud and all delegate voices. A voice already playing under a bubble goes quiet immediately. The setting lasts for the session only and isn't saved. Clicks don't propagate, so they never count as an outside-click for the Key or tutorial popups. The button loses focus after each click, so Space can't toggle it again during roll call.
+
 ---
 
 ## 5. Game Structure
@@ -827,6 +835,7 @@ Panel is a yellow sticky note fixed top-right on the briefing screen when `DEV_M
 - 3 · Unmod (auto-marks Phase 1, fakes a Phase 2 topic, jumps directly to Phase 3 motion collection)
 - 4 · Voting (auto-marks Phase 1, jumps directly to Phase 4 Stage 1 motion collection. v33: also fakes a minimal `state.p2.caucus` shell via `assignBlocs()` first, since Stage 2 needs Phase 3's bloc assignment to build its papers; through v32, Stage 1 alone had no such dependency)
 - 5 · Timed Crisis (v41, replaces the old disabled "5 · Debrief" placeholder — that text referred to a different, still-unbuilt global debrief, not this phase). Auto-marks Phase 1, jumps directly into Phase 5 Stage 1's motion collection. Needs no faked bloc/caucus data at all, unlike 3/4's dev-skips: Stage 2 builds its own fresh blocs when it runs, and `startPhase5Stage1()` already degrades gracefully (no bucket to exclude, `state.phase2WinningType` unset → coin flip) when `state.p2` is empty.
+- ★ Final Debrief (3★ all) (v53). Sets every `state.phaseStars` entry to 3 and opens the global debrief directly, so the perfect-session branch (message, enabled Chair Award button, screenshot hint) can be checked without playing through. This is the one dev path that deliberately reads as perfect.
 
 ---
 

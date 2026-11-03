@@ -1,6 +1,9 @@
 /* ========================================================
    POINT OF ORDER — A UNCMUNC Chair Simulator
-   style.css — v31
+   style.css — v32
+   v32: .audio-controls / .audio-toggle-btn — fixed bottom-left Music /
+        SFX mute toggles (index.html v22, game.js v54). .muted = struck
+        through + dimmed.
    v31: Small fixes pass (game.js v47, index.html v19).
         - New .bloc-guess-p3/.bloc-guess-p5: small corner tag badges on
           the Gavel-selection screen (startPhase5BestDelegate()), same
@@ -1699,6 +1702,38 @@ html, body {
 .delegate-seat.raised-voting:not(.active):hover {
     filter: drop-shadow(0 0 12px rgba(201, 162, 75, 0.7));
     cursor: pointer;
+}
+
+/* v32 — Audio mute toggles (fixed, every screen) */
+.audio-controls {
+    position: fixed;
+    left: 14px;
+    bottom: 14px;
+    z-index: 500;
+    display: flex;
+    gap: 6px;
+}
+.audio-toggle-btn {
+    background: var(--cream);
+    border: 1.5px solid var(--carolina-blue-dark);
+    color: var(--carolina-blue-dark);
+    font-family: "Special Elite", monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    padding: 4px 9px;
+    border-radius: 3px;
+    cursor: pointer;
+    box-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
+    transition: background 0.15s ease, opacity 0.15s ease;
+}
+.audio-toggle-btn:hover { background: var(--cream-dark); }
+.audio-toggle-btn:active {
+    transform: translateY(1px);
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+}
+.audio-toggle-btn.muted {
+    text-decoration: line-through;
+    opacity: 0.6;
 }
 
 /* Dev sticky note */
