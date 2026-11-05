@@ -1,5 +1,9 @@
 /* ==========================================================
    POINT OF ORDER — Game Logic
+   v56: Chair Award unlocks at CHAIR_AWARD_MIN_STARS (13) of 15 total
+        stars instead of requiring 3 in every phase. showGlobalDebrief()
+        keeps the "perfect committee" line for 15, with new messages for
+        13-14 and below 13. Title screen copy updated (index.html v23).
    v55: Double-click guards on three delayed chair prompts:
         handleProposerChoice(), beginAmendmentAnnouncementAnimation(),
         handleAmendmentDeclaration(). Each button stays clickable during
@@ -6429,6 +6433,7 @@ const GLOBAL_DEBRIEF_PHASES = [
     { key: "p5", label: "Phase 5 — Timed Crisis" },
 ];
 const CHAIR_AWARD_FORM_URL = "https://forms.gle/opNfNUkK4ceyA7nJ8";
+const CHAIR_AWARD_MIN_STARS = 13; // v56 — out of 15 across the five phases
 
 function buildGlobalDebriefRow(label, stars) {
     const row = document.createElement("div");
@@ -6466,8 +6471,8 @@ function buildGlobalDebriefRow(label, stars) {
 
 // A phase reached only via a dev-panel skip (its real debrief never
 // ran) leaves its state.phaseStars entry null forever — shown as "Not
-// Played" above, and here it simply fails the `=== 3` check like any
-// other non-3 value, so a dev-skipped session can never read as perfect.
+// Played" above, and here it simply counts as 0. Four phases can total
+// at most 12 stars, so a dev-skipped session can never earn the award.
 function showGlobalDebrief() {
     clearTutorial(); // v47 — a Phase 5 popup must never bleed into this screen
     const rowsEl = document.getElementById("global-debrief-rows");
@@ -6480,19 +6485,20 @@ function showGlobalDebrief() {
         rowsEl.appendChild(buildGlobalDebriefRow(label, state.phaseStars[key]));
     });
 
-    const [p1, p2, p3, p4, p5] = GLOBAL_DEBRIEF_PHASES.map(({ key }) => state.phaseStars[key]);
-    const perfect = [p1, p2, p3, p4, p5].every(s => s === 3);
+    const totalStars = GLOBAL_DEBRIEF_PHASES.reduce((sum, { key }) => sum + (state.phaseStars[key] || 0), 0);
+    const earnedAward = totalStars >= CHAIR_AWARD_MIN_STARS;
 
     // v48 — the button is always visible now; only its disabled state
     // (never "hidden") gates whether it can be clicked.
-    awardBtn.disabled = !perfect;
-    if (perfect) {
+    awardBtn.disabled = !earnedAward;
+    if (totalStars === GLOBAL_DEBRIEF_PHASES.length * 3) {
         messageEl.textContent = "A perfect committee! Claim your Chair Award.";
-        screenshotHint.hidden = false;
+    } else if (earnedAward) {
+        messageEl.textContent = `Well chaired! You earned ${totalStars} of 15 stars. Claim your Chair Award.`;
     } else {
-        messageEl.textContent = "Replay committee until you earn three stars in every phase, then come back to claim your Chair Award for full credit.";
-        screenshotHint.hidden = true;
+        messageEl.textContent = `You earned ${totalStars} of 15 stars. Replay committee until you earn at least ${CHAIR_AWARD_MIN_STARS}, then come back to claim your Chair Award for full credit.`;
     }
+    screenshotHint.hidden = !earnedAward;
 
     showScreen("global-debrief-screen");
 }
@@ -6865,7 +6871,7 @@ function devSkipTo(phase) {
         });
     });
     // v53 — jump straight to the whole-session debrief with a perfect
-    // 3-star result in every phase (unlocks the Chair Award button).
+    // 3-star result in every phase (15 stars unlocks the Chair Award button).
     panel.querySelectorAll("[data-dev-debrief]").forEach(btn => {
         btn.addEventListener("click", devSkipToPerfectDebrief);
     });

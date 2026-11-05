@@ -998,8 +998,8 @@ html, body {
 .chair-award-btn:hover:not(:disabled) {
     box-shadow: 0 4px 0 var(--wood-dark), 0 8px 14px rgba(0,0,0,0.18);
 }
-/* v48 — visibly greyed out, not merely hidden, until every phase in
-   state.phaseStars reads a perfect 3 (showGlobalDebrief()). Overrides
+/* v48 — visibly greyed out, not merely hidden, until state.phaseStars
+   totals at least 13 of 15 (showGlobalDebrief()). Overrides
    .big-button:disabled's gold-at-low-opacity look with a flatter,
    unambiguously "not yet earned" grey, same wood-dark shadow family. */
 .chair-award-btn:disabled {

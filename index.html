@@ -2,7 +2,9 @@
 <!--
     ============================================================
     POINT OF ORDER — A UNCMUNC Chair Simulator
-    index.html — v22
+    index.html — v23
+    v23: Title screen flavor text and award button comment match the new
+         13-of-15-star Chair Award threshold (game.js v56).
     v22: #audio-controls — fixed bottom-left Music / SFX mute toggles
          (game.js v54, style.css v32). Outside <main>, so they stay
          put across every screen.
@@ -108,7 +110,7 @@
             <p class="game-subtitle">A Chair Simulator</p>
             <div class="ram-doodle">🐏</div>
             <p class="flavor-text">
-                Get 3 stars in every phase of committee to win!<br>
+                Earn at least 13 of 15 stars in committee to win!<br>
                 YOU pick the Best Delegate.
             </p>
             <button class="big-button" id="begin-btn">Gavel In →</button>
@@ -354,8 +356,8 @@
             <div class="global-debrief-actions">
                 <!-- v48 — plain <button>, not an <a>, since it must open
                      the form via window.open() (never navigate this tab)
-                     and support a real disabled state when not perfect
-                     yet. Its own click handler (initGlobalDebriefScreen())
+                     and support a real disabled state below 13 stars.
+                     Its own click handler (initGlobalDebriefScreen())
                      is entirely separate from #global-restart-btn's. -->
                 <button class="big-button chair-award-btn" id="chair-award-btn" disabled>Claim Your Chair Award &rarr;</button>
                 <p class="global-debrief-screenshot-hint" id="global-debrief-screenshot-hint" hidden>
